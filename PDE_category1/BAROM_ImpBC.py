@@ -15,8 +15,7 @@ import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
 import pickle
 
-# ---------------------
-# 固定随机种子
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -24,16 +23,13 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
 
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
-        通用化数据集类，适配 Advection, Euler, Burgers, Darcy。
-
         Args:
-            data_list: 包含样本字典的列表。
+            data_list: 。
             dataset_type: 'advection', 'euler', 'burgers', 或 'darcy'。
             train_nt_limit: If specified, truncate sequences to this length for training.
         """
@@ -43,12 +39,8 @@ class UniversalPDEDataset(Dataset):
         self.dataset_type = dataset_type
         self.train_nt_limit = train_nt_limit # Store the limit
 
-        # --- 从第一个样本推断参数 ---
         first_sample = data_list[0]
         params = first_sample.get('params', {})
-
-        # --- 获取样本中的原始nt, nx, ny ---
-        # This 'self.nt_from_sample' will be the full length in the file
         if dataset_type == 'advection' or dataset_type == 'burgers':
             self.nt_from_sample = first_sample['U'].shape[0]
             self.nx_from_sample = first_sample['U'].shape[1]
@@ -64,7 +56,6 @@ class UniversalPDEDataset(Dataset):
         else:
             raise ValueError(f"Unknown dataset_type: {dataset_type}")
 
-        # Determine effective nt for the dataset instance (used in __getitem__)
         self.effective_nt = self.train_nt_limit if self.train_nt_limit is not None else self.nt_from_sample
 
         if dataset_type == 'advection':
@@ -154,7 +145,6 @@ class UniversalPDEDataset(Dataset):
             raise ValueError(f"Time dimension mismatch for BC_State. Expected {current_nt}, got {bc_state_seq.shape[0]}")
 
         bc_state_norm = np.zeros_like(bc_state_seq, dtype=np.float32)
-        # ... (rest of BC_State normalization logic, applied to 'bc_state_seq')
         norm_factors[f'{self.bc_state_key}_means'] = np.zeros(self.bc_state_dim)
         norm_factors[f'{self.bc_state_key}_stds'] = np.ones(self.bc_state_dim)
         for k_dim in range(self.bc_state_dim): # Renamed loop variable
@@ -170,8 +160,6 @@ class UniversalPDEDataset(Dataset):
                 norm_factors[f'{self.bc_state_key}_means'][k_dim] = mean_k
         bc_state_tensor_norm = torch.tensor(bc_state_norm).float()
 
-
-        # ---NO BC Control HERE ---
         if self.num_controls > 0:
             try:
                 bc_control_seq_full = sample[self.bc_control_key]
@@ -252,7 +240,6 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
         U_star = U_seq - U_B
         snapshots.append(U_star)
         count += 1
-    # ... (rest of the POD function remains the same) ...
     if not snapshots:
         print(f"Error: No valid snapshots collected for POD for '{state_variable_key}'. Ensure 'nt' ({nt}) is appropriate.")
         return None
@@ -507,7 +494,6 @@ class MultiHeadAttentionROM(nn.Module):
 
 
 class MultiVarAttentionROM(nn.Module):
-    # <<< MODIFIED: Reverted W_Q, added alpha, corrected Q calculation
     def __init__(self, state_variable_keys, nx, basis_dim, d_model,
                  bc_state_dim, num_controls, num_heads=8,
                  add_error_estimator=False, shared_attention=False,
@@ -592,7 +578,6 @@ class MultiVarAttentionROM(nn.Module):
         """ Helper to get shared or specific alpha parameter. """
         return self.alphas['shared'] if self.shared_attention else self.alphas[key]
 
-
     def forward_step(self, a_n_dict, BC_Ctrl_n, params=None):
         batch_size = list(a_n_dict.values())[0].size(0)
         a_next_dict = {}
@@ -621,17 +606,12 @@ class MultiVarAttentionROM(nn.Module):
             K = K_flat.view(batch_size, self.basis_dim, self.d_model)
             V = V_flat.view(batch_size, self.basis_dim, self.d_model)
 
-            # --- Prepare Q (using original method) ---
-            # <<< MODIFIED: Reverted Q calculation
-            # Apply W_Q (Linear(1, d_model)) to each coefficient independently
             a_n_unsq = a_n_var.unsqueeze(-1) # [batch, basis_dim, 1]
             Q_base = W_Q_var(a_n_unsq)      # [batch, basis_dim, d_model]
 
-            # Calculate FFN update term
             ffn_update = ffn_var(a_n_var)          # [batch, basis_dim]
             ffn_term = alpha_var * ffn_update.unsqueeze(-1) # [batch, basis_dim, 1]
 
-            # Add FFN term to base Q (broadcasting the last dim of ffn_term)
             Q = Q_base + ffn_term # [batch, basis_dim, d_model]
 
             # --- Attention & Update ---
@@ -640,20 +620,16 @@ class MultiVarAttentionROM(nn.Module):
             z_reshaped = z.reshape(-1, self.d_model)
             a_update_attn = proj_var(z_reshaped).view(batch_size, self.basis_dim)
 
-            # Combine updates (Attention result + FFN result directly - as per original logic)
-            # Note: ffn_update was already computed for Q. Re-use it.
             a_update = a_update_attn + ffn_update
             a_next_var = a_n_var + a_update
             a_next_dict[key] = a_next_var
 
-            # --- Reconstruction ---
             U_B_var = U_B_stacked[:, i, :].unsqueeze(-1)
             Phi_exp = Phi_var.unsqueeze(0).expand(batch_size, -1, -1)
             a_next_unsq = a_next_var.unsqueeze(-1)
             U_recon = torch.bmm(Phi_exp, a_next_unsq)
             U_hat_dict[key] = U_B_var + U_recon
 
-        # Error Estimation (if enabled)
         err_est = None
         if self.add_error_estimator:
             a_next_combined = torch.cat(list(a_next_dict.values()), dim=-1)
@@ -661,7 +637,6 @@ class MultiVarAttentionROM(nn.Module):
 
         return a_next_dict, U_hat_dict, err_est
 
-    # forward method remains the same as in the previous MultiVarAttentionROM
     def forward(self, a0_dict, BC_Ctrl_seq, T, params=None):
          # ... (Implementation from previous response - no change needed here) ...
          # Map initial states
@@ -687,15 +662,11 @@ class MultiVarAttentionROM(nn.Module):
     def get_basis(self, key):
         return self.Phi[key]
  
-
-# TRAINING AND 1 SHOT VALIDATION
-
 def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Added train_nt_target
                         lr=1e-3, num_epochs=50, device='cuda',
                         checkpoint_path='rom_checkpoint.pt', lambda_res=0.05,
                         lambda_orth=0.001, lambda_bc_penalty=0.01,
                         clip_grad_norm=1.0):
-    # <<< MODIFIED: Handles multi-variable training
     model.to(device)
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-5)
     mse_loss = nn.MSELoss()
@@ -703,7 +674,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, verbose=True)
 
     start_epoch = 0
-    # --- Checkpoint Loading (simplified) ---
     if os.path.exists(checkpoint_path):
         print(f"Loading existing checkpoint from {checkpoint_path} ...")
         # Basic loading, assumes compatibility
@@ -732,7 +702,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
         count = 0
         batch_start_time = time.time()
 
-        # <<< MODIFIED: Unpack potentially multiple state tensors
         for i, (state_data, BC_Ctrl_tensor, norm_factors) in enumerate(data_loader):
 
             # Move data to device
@@ -743,15 +712,12 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
                 state_tensors = [state_data.to(device)]
                 batch_size, nt, nx = state_tensors[0].shape
             BC_Ctrl_tensor = BC_Ctrl_tensor.to(device)
-            # Ensure nt_from_loader matches train_nt_target
             if nt != train_nt_target:
                 raise ValueError(f"Mismatch: nt from DataLoader ({nt}) != train_nt_target ({train_nt_target})")
 
             optimizer.zero_grad()
 
-            # --- Initial State Projection (per variable) ---
             a0_dict = {}
-            # Get BC+Ctrl at t=0
             BC_ctrl_combined_t0 = BC_Ctrl_tensor[:, 0, :]
             with torch.no_grad():
                  # U_B_stacked_t0: [batch, num_vars, nx]
@@ -833,12 +799,7 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
             epoch_loss += total_batch_loss.item()
             count += 1
 
-            # Print progress
-            # if (i + 1) % 50 == 0:
-            #      batch_time = time.time() - batch_start_time
-            #      print(f"  Epoch {epoch+1}/{num_epochs}, Batch {i+1}/{len(data_loader)}, "
-            #            f"Batch Loss: {total_batch_loss.item():.4e}, Time/Batch: {batch_time/50:.3f}s")
-            #      batch_start_time = time.time()
+
 
 
         avg_epoch_loss = epoch_loss / count
@@ -876,7 +837,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
     
-# In your model/training script
 def validate_multivar_model(model, data_loader, dataset_type, 
                             train_nt_for_model_training: int, # Timesteps used during model.forward() in training
                             T_value_for_model_training: float, # T value corresponding to train_nt_for_model_training
@@ -900,7 +860,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
     print(f"Datafile contains nt={full_nt_in_datafile} for T={full_T_in_datafile}")
 
 
-    # Process only the first batch for detailed validation plots
     try:
         state_data_full, BC_Ctrl_tensor_full, norm_factors_batch = next(iter(data_loader))
         # data_loader for validation should give FULL sequences from UniversalPDEDataset
@@ -908,7 +867,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
         print("No validation data. Skipping validation.")
         return
 
-    # --- Prepare data from the first sample of the batch ---
     if isinstance(state_data_full, list):
         state_tensors_full = [s[0:1].to(device) for s in state_data_full] # Take 1st sample, full nt
         batch_size_check, nt_loaded, nx_loaded = state_tensors_full[0].shape
@@ -939,7 +897,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
     state_keys = model.state_keys
     current_batch_size = 1 # We are processing one sample
 
-    # --- Calculate initial coefficients a0_dict (from t=0 of the full data) ---
     a0_dict = {}
     BC0_full = BC_Ctrl_tensor_full_sample[:, 0, :]       # [1, bc_state+ctrl_dim]
     U_B0_lifted = model.lifting(BC0_full)                # [1, num_vars, nx]
@@ -951,26 +908,16 @@ def validate_multivar_model(model, data_loader, dataset_type,
         a0 = torch.bmm(Phi_T, U0_full_var - U_B0_var).squeeze(-1) # [1, basis_dim]
         a0_dict[key] = a0
 
-    # --- Loop through each test horizon ---
     for T_test_horizon in test_horizons_T_values:
-        # Calculate number of timesteps for this test horizon
-        # (nt_file_points - 1) is the number of intervals for T_file
         nt_for_this_horizon = int((T_test_horizon / full_T_in_datafile) * (full_nt_in_datafile - 1)) + 1
         nt_for_this_horizon = min(nt_for_this_horizon, full_nt_in_datafile) # Cap at available data
 
         print(f"\n--- Validating for T_horizon = {T_test_horizon:.2f} (nt = {nt_for_this_horizon}) ---")
 
-        # Prepare BC_sequence for this horizon by slicing the full BC_Ctrl_tensor_full_sample
         BC_seq_for_pred = BC_Ctrl_tensor_full_sample[:, :nt_for_this_horizon, :]
 
-        # Forward pass for the current horizon
         U_hat_seq_dict, _ = model(a0_dict, BC_seq_for_pred, T=nt_for_this_horizon)
-
-        # --- Quantitative Evaluation (only if T_test_horizon matches training T) ---
-        # Or, always evaluate against available ground truth up to nt_for_this_horizon
-        # For your request, T=1.0 is special, others are for visual/qualitative.
-        # Let's calculate metrics for ALL horizons against their corresponding ground truth slices.
-
+        
         combined_pred_denorm = []
         combined_gt_denorm = []
 
@@ -1047,8 +994,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
         print(f"Saved validation figure to: {horizon_fig_path}")
         plt.show()
 
-
-    # --- Print Summary for T matching training T ---
     print(f"\n--- Validation Summary (Metrics for T={T_value_for_model_training:.1f}) ---")
     for key in state_keys:
         if results[key]['mse']: # Check if results were appended
@@ -1226,16 +1171,11 @@ if __name__ == '__main__':
     # --- POD Basis Initialization (per variable) ---
     print("\nInitializing POD bases...")
     pod_bases = {}
-    # Get necessary info (like nx, nt) from the dataset *after* it's created
-    # Ensure train_dataset has at least one sample
+
     if not train_dataset:
         print("Error: Training dataset is empty. Cannot compute POD.")
         exit()
 
-    # <<< CORRECTED WAY TO GET actual_nt >>>
-    # train_dataset[0] returns -> (state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors)
-    # train_dataset[0][0] is state_tensors_norm_list (always a list)
-    # train_dataset[0][0][0] is the first state tensor in the list
     try:
         # Get the first sample's data to determine nt
         first_sample_data = train_dataset[0]
@@ -1244,14 +1184,10 @@ if __name__ == '__main__':
     except IndexError:
         print("Error: Could not access shape from the first sample in train_dataset.")
         exit()
-    # <<< END CORRECTION >>>
 
 
     for key in state_keys:
         basis_path = os.path.join(basis_dir, f'pod_basis_{key}_nx{current_nx}.npy') # current_nx should be correctly set earlier (nx or nx*ny)
-
-        # <<< REMOVED bc_indices lookup, not needed for the optimized POD function >>>
-        # bc_indices = bc_state_indices_map[key] # No longer needed for the function call
 
         loaded_basis = None
         if os.path.exists(basis_path):
@@ -1276,7 +1212,6 @@ if __name__ == '__main__':
                 nx=current_nx_model, nt=TRAIN_NT_FOR_MODEL, # Pass truncated nt
                 basis_dim=basis_dim
             )
-            # <<< END CORRECTION >>>
 
             if computed_basis is not None:
                  pod_bases[key] = computed_basis
