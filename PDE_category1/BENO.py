@@ -1,7 +1,7 @@
 # beno
 # =============================================================================
 #     BENO-inspired Time-Stepping Neural Operator Baseline (Adapted for Task1) ref:https://github.com/AI4Science-WestlakeU/beno/tree/main
-ICLR24] A boundary-embedded neural operator that incorporates complex boundary shape and inhomogeneous boundary values
+# [ICLR24] A boundary-embedded neural operator that incorporates complex boundary shape and inhomogeneous boundary values
 # =============================================================================
 import os
 import numpy as np
