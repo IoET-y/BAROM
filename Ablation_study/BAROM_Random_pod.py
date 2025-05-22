@@ -1,7 +1,3 @@
-# =============================================================================
-#        COMPLETE CODE: Handling Advection, Euler, Burgers, Darcy Eq.
-#     with Control Inputs, Modified Lifting, and Multi-Variable Support
-# =============================================================================
 import os
 import numpy as np
 import torch
@@ -19,8 +15,7 @@ import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
 import pickle
 
-# ---------------------
-# 固定随机种子
+# Fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -28,11 +23,8 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 2. 通用化数据集定义
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list:
@@ -185,9 +177,7 @@ class UniversalPDEDataset(Dataset):
         return state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors
 
 
-# =============================================================================
-# 3. 通用化 POD 基计算 (优化 U_B 定义)
-# =============================================================================
+
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, 
                               max_snapshots_pod=100):
@@ -291,9 +281,6 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     return basis.astype(np.float32)
 
 
-# =============================================================================
-# 4. 模型定义 
-# =============================================================================
 class ImprovedUpdateFFN(nn.Module):
     def __init__(self, input_dim, hidden_dim=256, num_layers=3, dropout=0.1):
         super().__init__()
@@ -595,9 +582,6 @@ class MultiVarAttentionROM(nn.Module):
     def get_basis(self, key):
         return self.Phi[key]
 
-# =============================================================================
-# 5. 训练与验证函数
-# =============================================================================
 def train_multivar_model(model, data_loader, dataset_type, train_nt_target, 
                         lr=1e-3, num_epochs=50, device='cuda',
                         checkpoint_path='rom_checkpoint.pt', lambda_res=0.05,
@@ -945,9 +929,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
     if overall_rel_err_T_train_horizon: 
         print(f"Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_T_train_horizon):.4e}")
 
-# =============================================================================
-# 6. 主流程
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train and validate BAROM model for various PDE datasets.")
     parser.add_argument('--datatype', type=str, required=True,
@@ -957,14 +939,13 @@ if __name__ == '__main__':
                         help='Type of dataset to use.')
     parser.add_argument('--use_fixed_lifting', action='store_true',
                         help='Use fixed linear interpolation for U_B instead of learned lifting.')
-    # <<< 新增命令行参数 >>>
     parser.add_argument('--random_phi_init', action='store_true',
                         help='Use random orthogonal initialization for Phi instead of POD.')
     args = parser.parse_args()
 
     DATASET_TYPE = args.datatype 
     USE_FIXED_LIFTING_ABLATION = args.use_fixed_lifting
-    RANDOM_PHI_INIT_ABLATION = args.random_phi_init # <<< 获取参数值 >>>
+    RANDOM_PHI_INIT_ABLATION = args.random_phi_init # 
     
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -975,12 +956,11 @@ if __name__ == '__main__':
         print("ABLATION STUDY: Using RANDOM Initialization for Phi")
 
 
-    # --- 时间参数 ---
     if DATASET_TYPE in ['heat_delayed_feedback', 'reaction_diffusion_neumann_feedback', 'heat_nonlinear_feedback_gain', 'convdiff']:
         FULL_T_IN_DATAFILE = 2.0
         FULL_NT_IN_DATAFILE = 300 
     else: 
-        FULL_T_IN_DATAFILE = 2.0 # 默认值，根据您的其他数据集调整
+        FULL_T_IN_DATAFILE = 2.0 
         FULL_NT_IN_DATAFILE = 600
         
     if DATASET_TYPE in ['heat_delayed_feedback', 'reaction_diffusion_neumann_feedback', 'heat_nonlinear_feedback_gain', 'convdiff']:
@@ -996,7 +976,6 @@ if __name__ == '__main__':
     print(f"Full data T={FULL_T_IN_DATAFILE}, nt={FULL_NT_IN_DATAFILE}")
     print(f"Training will use T={TRAIN_T_TARGET}, nt={TRAIN_NT_FOR_MODEL}")
 
-    # --- 通用参数 ---
     basis_dim = 32
     d_model = 512
     num_heads = 8
@@ -1010,9 +989,7 @@ if __name__ == '__main__':
     lambda_bc_penalty = 0.01
     clip_grad_norm = 1.0
 
-    # --- 路径设置 ---
     timestamp = time.strftime("%Y%m%d-%H%M%S")
-    # <<< 修改 run_name 以包含两个 ablation 状态 >>>
     suffix_lift = "_fixedlift" if USE_FIXED_LIFTING_ABLATION else ""
     suffix_phi = "_randphi" if RANDOM_PHI_INIT_ABLATION else ""
     run_name = f"{DATASET_TYPE}_b{basis_dim}_d{d_model}{suffix_lift}{suffix_phi}"
@@ -1023,12 +1000,10 @@ if __name__ == '__main__':
     os.makedirs(results_dir, exist_ok=True)
     checkpoint_path = os.path.join(checkpoint_dir, f'barom_{run_name}.pt')
     save_fig_path = os.path.join(results_dir, f'barom_result_{run_name}.png')
-    # POD 基目录仅在不使用随机 Phi 初始化时相关
     basis_dir = os.path.join(checkpoint_dir, 'pod_bases') 
     if not RANDOM_PHI_INIT_ABLATION:
         os.makedirs(basis_dir, exist_ok=True)
 
-    # --- 数据集特定参数和加载 ---
     if DATASET_TYPE == 'heat_delayed_feedback':
         dataset_path = "./datasets_new_feedback/heat_delayed_feedback_v1_5000s_64nx_300nt.pkl" 
         nx_data_param = 64; L_data_param = 1.0 
@@ -1061,7 +1036,6 @@ if __name__ == '__main__':
         
     if not data_list: print("No data generated, exiting."); exit()
 
-    # --- 数据拆分和加载 ---
     random.shuffle(data_list)
     n_total = len(data_list); n_train = int(0.8 * n_total)
     train_data_list = data_list[:n_train]; val_data_list = data_list[n_train:]
@@ -1082,7 +1056,6 @@ if __name__ == '__main__':
     print(f"Model Configuration: nx={current_nx_model}, basis_dim={basis_dim}, d_model={d_model}")
     print(f"Model BC_State dim: {model_bc_state_dim}, Model Num Controls: {model_num_controls}")
 
-    # --- 模型初始化 ---
     online_model = MultiVarAttentionROM(
         state_variable_keys=state_keys, nx=current_nx_model, basis_dim=basis_dim,
         d_model=d_model, 
@@ -1093,7 +1066,6 @@ if __name__ == '__main__':
         use_fixed_lifting=USE_FIXED_LIFTING_ABLATION
     )
 
-    # --- POD 基初始化 (如果需要) ---
     if not RANDOM_PHI_INIT_ABLATION: # <<< 仅在不使用随机 Phi 初始化时执行 >>>
         print("\nInitializing Phi with POD bases...")
         pod_bases = {}
@@ -1144,7 +1116,6 @@ if __name__ == '__main__':
             else:
                 pod_bases[key_pod_loop] = loaded_basis
 
-        # 将 POD 基 初始化到模型的 Phi 参数
         with torch.no_grad():
             for key_phi_init in state_keys:
                 if key_phi_init in pod_bases and key_phi_init in online_model.Phi:
@@ -1161,7 +1132,6 @@ if __name__ == '__main__':
         print("\nSkipping POD basis initialization for Phi (using random orthogonal initialization).")
 
 
-    # --- 训练 ---
     print(f"\nStarting training for {DATASET_TYPE.upper()}{suffix_lift}{suffix_phi}...")
     start_train_time = time.time()
     online_model = train_multivar_model(
@@ -1175,7 +1145,6 @@ if __name__ == '__main__':
     end_train_time = time.time()
     print(f"Training took {end_train_time - start_train_time:.2f} seconds.")
 
-    # --- 验证 ---
     if val_data_list: 
         print(f"\nStarting validation for {DATASET_TYPE.upper()}{suffix_lift}{suffix_phi}...")
         validate_multivar_model(
