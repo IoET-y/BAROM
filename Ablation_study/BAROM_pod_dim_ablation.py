@@ -1,7 +1,4 @@
-# =============================================================================
-#        COMPLETE CODE: Handling PDE
-#     with Control Inputs, Modified Lifting, and Multi-Variable Support
-# =============================================================================
+
 import os
 import numpy as np
 import torch
@@ -17,8 +14,7 @@ from scipy.sparse.linalg import spsolve
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -26,17 +22,13 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 2. 通用化数据集定义
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
 
         Args:
-            data_list: 包含样本字典的列表。
+            data_list: 。
             train_nt_limit: If specified, truncate sequences to this length for training.
         """
         if not data_list:
@@ -45,15 +37,8 @@ class UniversalPDEDataset(Dataset):
         self.dataset_type = dataset_type
         self.train_nt_limit = train_nt_limit # Store the limit
 
-        # --- 从第一个样本推断参数 ---
         first_sample = data_list[0]
         params = first_sample.get('params', {})
-
-        # --- 获取样本中的原始nt, nx, ny ---
-        # This 'self.nt_from_sample' will be the full length in the file
-
-
-        # Determine effective nt for the dataset instance (used in __getitem__)
 
 
         if dataset_type == 'heat_delayed_feedback':
@@ -85,14 +70,12 @@ class UniversalPDEDataset(Dataset):
             self.expected_bc_state_dim = 2 # BC_State stores [g0_t_base, gL_t_base + Nonlinear_Feedback_term]
             
         elif dataset_type == 'convdiff':
-            # 新增：Convection–Diffusion 带积分反馈
             self.nt_from_sample    = first_sample['U'].shape[0]
             self.nx_from_sample    = first_sample['U'].shape[1]
             self.state_keys        = ['U']
             self.num_state_vars    = 1
             self.nx                = self.nx_from_sample
             self.ny                = 1
-            # BC_State 存储左右两端的 u 值，BC_Control 存储左右两端的积分控制
             self.expected_bc_state_dim = 2
             
         else:
@@ -127,7 +110,6 @@ class UniversalPDEDataset(Dataset):
         sample = self.data_list[idx]
         norm_factors = {}
 
-        # --- Potentially truncate sequences ---
         current_nt = self.effective_nt # Use the effective_nt for slicing
 
         state_tensors_norm_list = []
@@ -142,7 +124,6 @@ class UniversalPDEDataset(Dataset):
             if state_seq.shape[0] != current_nt: # Should not happen if slicing is correct
                  raise ValueError(f"Time dimension mismatch after potential truncation for {key}. Expected {current_nt}, got {state_seq.shape[0]}")
 
-            # Normalization (now happens on potentially truncated data)
             state_mean = np.mean(state_seq)
             state_std = np.std(state_seq) + 1e-8
             state_norm = (state_seq - state_mean) / state_std
@@ -151,7 +132,6 @@ class UniversalPDEDataset(Dataset):
             norm_factors[f'{key}_mean'] = state_mean
             norm_factors[f'{key}_std'] = state_std
 
-        # --- BC State ---
         bc_state_seq_full = sample[self.bc_state_key]
         bc_state_seq = bc_state_seq_full[:current_nt, :] # Truncate
 
@@ -159,7 +139,6 @@ class UniversalPDEDataset(Dataset):
             raise ValueError(f"Time dimension mismatch for BC_State. Expected {current_nt}, got {bc_state_seq.shape[0]}")
 
         bc_state_norm = np.zeros_like(bc_state_seq, dtype=np.float32)
-        # ... (rest of BC_State normalization logic, applied to 'bc_state_seq')
         norm_factors[f'{self.bc_state_key}_means'] = np.zeros(self.bc_state_dim)
         norm_factors[f'{self.bc_state_key}_stds'] = np.ones(self.bc_state_dim)
         for k_dim in range(self.bc_state_dim): # Renamed loop variable
@@ -175,8 +154,6 @@ class UniversalPDEDataset(Dataset):
                 norm_factors[f'{self.bc_state_key}_means'][k_dim] = mean_k
         bc_state_tensor_norm = torch.tensor(bc_state_norm).float()
 
-
-        # --- BC Control ---
         if self.num_controls > 0:
             try:
                 bc_control_seq_full = sample[self.bc_control_key]
@@ -213,11 +190,6 @@ class UniversalPDEDataset(Dataset):
         return state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors
 
 
-
-# =============================================================================
-# 3. 通用化 POD 基计算 (优化 U_B 定义)
-# =============================================================================
-# In your model/training script
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, # nt here is the TRUNCATED length
                               max_snapshots_pod=100):
@@ -261,7 +233,6 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
         U_star = U_seq - U_B
         snapshots.append(U_star)
         count += 1
-    # ... (rest of the POD function remains the same) ...
     if not snapshots:
         print(f"Error: No valid snapshots collected for POD for '{state_variable_key}'. Ensure 'nt' ({nt}) is appropriate.")
         return None
@@ -329,12 +300,7 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     return basis.astype(np.float32)
 
 
-
-# =============================================================================
-# 4. 模型定义 - 修改Lifting和ROM以支持多变量
-# =============================================================================
-
-# 4.1. Feedforward 更新网络 (不变)
+# 4.1. Feedforward
 class ImprovedUpdateFFN(nn.Module):
      # ... (keep implementation from previous response) ...
      def __init__(self, input_dim, hidden_dim=256, num_layers=3, dropout=0.1):
@@ -356,8 +322,7 @@ class ImprovedUpdateFFN(nn.Module):
         out = self.layernorm(out + residual)
         return out
 
-
-# 4.2. Lifting 模块: 支持多变量状态输入和多变量状态输出 (增强容量)
+# 4.2. Lifting
 class UniversalLifting(nn.Module):
     # <<< MODIFIED: Increased default capacity and added fusion layer
     def __init__(self, num_state_vars, bc_state_dim, num_controls, output_dim_per_var, nx,
@@ -490,7 +455,7 @@ class UniversalLifting(nn.Module):
         return U_B_stacked
 
 
-# 4.3. 多头注意力模块 (不变)
+# 4.3. MultiHeadAttentionROM
 class MultiHeadAttentionROM(nn.Module):
     # ... (keep implementation from previous response) ...
     def __init__(self, basis_dim, d_model, num_heads):
@@ -519,7 +484,7 @@ class MultiHeadAttentionROM(nn.Module):
         return z
 
 
-# 4.4. Attention-Based ROM: 支持多变量 (修正 W_Q 和 Q 计算)
+# 4.4. Attention-Based ROM
 class MultiVarAttentionROM(nn.Module):
     # <<< MODIFIED: Reverted W_Q, added alpha, corrected Q calculation
     def __init__(self, state_variable_keys, nx, basis_dim, d_model,
@@ -675,10 +640,7 @@ class MultiVarAttentionROM(nn.Module):
 
         return a_next_dict, U_hat_dict, err_est
 
-    # forward method remains the same as in the previous MultiVarAttentionROM
     def forward(self, a0_dict, BC_Ctrl_seq, T, params=None):
-         # ... (Implementation from previous response - no change needed here) ...
-         # Map initial states
         a_current_dict = {}
         for key in self.state_keys:
             a0_map = self._get_layer(self.a0_mapping, key)
@@ -702,10 +664,6 @@ class MultiVarAttentionROM(nn.Module):
         return self.Phi[key]
  
 
-# =============================================================================
-# 5. 训练与验证函数 - 支持多变量
-# =============================================================================
-
 def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Added train_nt_target
                         lr=1e-3, num_epochs=50, device='cuda',
                         checkpoint_path='rom_checkpoint.pt', lambda_res=0.05,
@@ -719,7 +677,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.5, patience=10, verbose=True)
 
     start_epoch = 0
-    # --- Checkpoint Loading (simplified) ---
     if os.path.exists(checkpoint_path):
         print(f"Loading existing checkpoint from {checkpoint_path} ...")
         # Basic loading, assumes compatibility
@@ -748,7 +705,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
         count = 0
         batch_start_time = time.time()
 
-        # <<< MODIFIED: Unpack potentially multiple state tensors
         for i, (state_data, BC_Ctrl_tensor, norm_factors) in enumerate(data_loader):
 
             # Move data to device
@@ -785,7 +741,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
             # --- Forward Pass ---
             U_hat_seq_dict, _ = model(a0_dict, BC_Ctrl_tensor, T=train_nt_target, params=None)
 
-            # --- Calculate Loss (sum over variables) ---
             total_batch_loss = 0.0
             mse_recon_loss = 0.0
             residual_orth_loss = 0.0
@@ -892,14 +847,12 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
     
-# In your model/training script
 def validate_multivar_model(model, data_loader, dataset_type, 
                             train_nt_for_model_training: int, # Timesteps used during model.forward() in training
                             T_value_for_model_training: float, # T value corresponding to train_nt_for_model_training
                             full_T_in_datafile: float, # Max T value in the raw .pkl file (e.g., 2.0)
                             full_nt_in_datafile: int,device='cuda',
                             save_fig_path='rom_result.png',): # Max nt in the raw .pkl file (e.g., 601 if 0-600)
-    # ... (imports) ...
     model.eval()
     results = {key: {'mse': [], 'rmse': [], 'relative_error': [], 'max_error': []}
                for key in model.state_keys}
@@ -916,7 +869,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
     print(f"Datafile contains nt={full_nt_in_datafile} for T={full_T_in_datafile}")
 
 
-    # Process only the first batch for detailed validation plots
     try:
         state_data_full, BC_Ctrl_tensor_full, norm_factors_batch = next(iter(data_loader))
         # data_loader for validation should give FULL sequences from UniversalPDEDataset
@@ -940,7 +892,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
         # For now, we proceed assuming nt_loaded is the true full length available for this sample.
         # full_nt_in_datafile = nt_loaded # Or raise error
 
-    # Extract norm_factors for the first sample
     norm_factors_sample = {}
     for key, val_tensor in norm_factors_batch.items():
         if isinstance(val_tensor, torch.Tensor) or isinstance(val_tensor, np.ndarray):
@@ -967,7 +918,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
         a0 = torch.bmm(Phi_T, U0_full_var - U_B0_var).squeeze(-1) # [1, basis_dim]
         a0_dict[key] = a0
 
-    # --- Loop through each test horizon ---
     for T_test_horizon in test_horizons_T_values:
         # Calculate number of timesteps for this test horizon
         # (nt_file_points - 1) is the number of intervals for T_file
@@ -990,7 +940,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
         combined_pred_denorm = []
         combined_gt_denorm = []
 
-        # Prepare figure for this horizon
         num_vars_plot = len(state_keys)
         fig, axs = plt.subplots(num_vars_plot, 3, figsize=(18, 5 * num_vars_plot), squeeze=False)
         L_vis = 1.0 # Assuming L=1.0 for plotting extent, get from params if dynamic
@@ -1077,9 +1026,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
     if overall_rel_err_T1:
         print(f"Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_T1):.4e}")
 
-# =============================================================================
-# 6. 主流程 - 可选择数据集类型
-# =============================================================================
+# main script
 import pickle
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
@@ -1175,7 +1122,6 @@ if __name__ == '__main__':
         nx               = 64; L = 1.0
         state_keys       = ['U']
         num_state_vars   = 1
-        # 注意：有两个控制信号（左边和右边的积分反馈）
         num_controls     = 2
     else:
         raise ValueError(f"Unknown dataset_type: {DATASET_TYPE}")
@@ -1227,16 +1173,12 @@ if __name__ == '__main__':
     # --- POD Basis Initialization (per variable) ---
     print("\nInitializing POD bases...")
     pod_bases = {}
-    # Get necessary info (like nx, nt) from the dataset *after* it's created
-    # Ensure train_dataset has at least one sample
+
     if not train_dataset:
         print("Error: Training dataset is empty. Cannot compute POD.")
         exit()
 
-    # <<< CORRECTED WAY TO GET actual_nt >>>
-    # train_dataset[0] returns -> (state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors)
-    # train_dataset[0][0] is state_tensors_norm_list (always a list)
-    # train_dataset[0][0][0] is the first state tensor in the list
+
     try:
         # Get the first sample's data to determine nt
         first_sample_data = train_dataset[0]
@@ -1245,14 +1187,12 @@ if __name__ == '__main__':
     except IndexError:
         print("Error: Could not access shape from the first sample in train_dataset.")
         exit()
-    # <<< END CORRECTION >>>
 
 
     for key in state_keys:
         basis_path = os.path.join(basis_dir, f'pod_basis_{key}_nx{current_nx}_bd{basis_dim}.npy') # current_nx should be correctly set earlier (nx or nx*ny)
 
-        # <<< REMOVED bc_indices lookup, not needed for the optimized POD function >>>
-        # bc_indices = bc_state_indices_map[key] # No longer needed for the function call
+
 
         loaded_basis = None
         if os.path.exists(basis_path):
