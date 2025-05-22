@@ -14,7 +14,7 @@ import argparse
 import pickle # Ensure pickle is imported
 
 # ---------------------
-# 固定随机种子 (Fixed random seed)
+#Fixed random seed)
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -24,9 +24,6 @@ if torch.cuda.is_available():
 torch.backends.cudnn.deterministic = True
 # ---------------------
 
-# =============================================================================
-# 2. 通用化数据集定义 (UniversalPDEDataset)
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
@@ -211,9 +208,7 @@ class UniversalPDEDataset(Dataset):
         bc_ctrl_tensor_norm = torch.cat((bc_state_tensor_norm, bc_control_tensor_norm), dim=-1)
         return state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors
 
-# =============================================================================
-# 3. 通用化 POD 基计算 (compute_pod_basis_generic)
-# =============================================================================
+
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, 
                               max_snapshots_pod=100):
@@ -302,11 +297,9 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     return basis.astype(np.float32)
 
 
-# =============================================================================
-# 4. 模型定义 - 公共组件 (Model Definitions - Common Components)
-# =============================================================================
 
-# 4.1. Feedforward 更新网络 (ImprovedUpdateFFN - General Version)
+
+# 4.1. Feedforward 
 class ImprovedUpdateFFN(nn.Module):
     def __init__(self, input_dim, hidden_dim=256, num_layers=3, dropout=0.1, output_dim=None):
         super().__init__()
@@ -335,7 +328,7 @@ class ImprovedUpdateFFN(nn.Module):
             out = self.layernorm(mlp_out) # No residual if dims don't match
         return out
 
-# 4.2. Lifting 模块 (UniversalLifting)
+# 4.2. Lifting 
 class UniversalLifting(nn.Module):
     def __init__(self, num_state_vars, bc_state_dim, num_controls, output_dim_per_var, nx,
                  hidden_dims_state_branch=64,
@@ -422,7 +415,7 @@ class UniversalLifting(nn.Module):
         U_B_stacked = fused_output.view(-1, self.num_state_vars, self.nx)
         return U_B_stacked
 
-# 4.3. 多头注意力机制 (CustomMultiHeadAttentionMechanism)
+# 4.3. 
 class CustomMultiHeadAttentionMechanism(nn.Module):
     def __init__(self, basis_dim, d_model, num_heads): # basis_dim here is sequence_length for attention
         super().__init__()
@@ -452,13 +445,7 @@ class CustomMultiHeadAttentionMechanism(nn.Module):
         z = self.out_proj(z) # [batch, seq_len, d_model]
         return z
 
-# =============================================================================
-# 4.4. 原模型定义 (Original Model Definitions)
-# =============================================================================
-#省略
-# =============================================================================
-# 4.5. 消融模型定义 (Ablation Model Definitions)
-# =============================================================================
+
 
 # 4.5.1 No-Attention ROM with EXPLICIT BC processing
 class NoAttention_ExplicitBC_ROM(nn.Module):
@@ -835,10 +822,7 @@ class NoAttention_ImplicitBC_ROM(nn.Module):
     def get_basis(self, key):
         return self.Phi[key]
 
-# =============================================================================
-# 5. 训练与验证函数 (train_multivar_model, validate_multivar_model)
-#    (Using versions from the explicit BC code as they are more comprehensive)
-# =============================================================================
+
 def train_multivar_model(model, data_loader, dataset_type, train_nt_target,
                          lr=1e-3, num_epochs=50, device='cuda',
                          checkpoint_path='rom_checkpoint.pt', lambda_res=0.05,
@@ -1164,10 +1148,8 @@ def validate_multivar_model(model, data_loader, dataset_type,
     if overall_rel_err_at_train_T:
         print(f"Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_at_train_T):.4e}")
 
+# (Main script)
 
-# =============================================================================
-# 6. 主流程 (Main script)
-# =============================================================================
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Train ROM models with various configurations including ablations.")
     parser.add_argument('--datatype', type=str, required=True,
@@ -1272,7 +1254,6 @@ if __name__ == '__main__':
     if not RANDOM_PHI_INIT_ABLATION:
         os.makedirs(basis_dir, exist_ok=True)
 
-    # --- 数据集特定参数和加载 (Dataset specific parameters and loading) ---
     if DATASET_TYPE == 'heat_delayed_feedback':
         dataset_path = "./datasets_new_feedback/heat_delayed_feedback_v1_5000s_64nx_300nt.pkl" 
         nx_data_param = 64; state_keys = ['U']
@@ -1295,7 +1276,6 @@ if __name__ == '__main__':
     except FileNotFoundError: print(f"Error: Dataset file not found at {dataset_path}"); exit()
     if not data_list: print("No data generated, exiting."); exit()
 
-    # --- 数据拆分和加载 (Data splitting and loading) ---
     random.shuffle(data_list)
     n_total = len(data_list); n_train = int(0.8 * n_total)
     train_data_list = data_list[:n_train]; val_data_list = data_list[n_train:]
@@ -1317,7 +1297,6 @@ if __name__ == '__main__':
     print(f"Model Configuration: nx={current_nx_model}, basis_dim={args.basis_dim}")
     print(f"Model BC_State dim: {model_bc_state_dim}, Model Num Controls: {model_num_controls}")
 
-    # --- 模型初始化 (Model Initialization) ---
     online_model = None
     if MODEL_VARIANT == 'explicit_bc_no_attn':
         print(f"Initializing NoAttention_ExplicitBC_ROM:")
@@ -1359,7 +1338,6 @@ if __name__ == '__main__':
     else:
         print(f"Successfully instantiated: {online_model.__class__.__name__}")
         
-    # --- POD 基初始化 (POD Basis Initialization) ---
     if not RANDOM_PHI_INIT_ABLATION: 
         print("\nInitializing Phi with POD bases...")
         pod_bases = {}
@@ -1407,7 +1385,6 @@ if __name__ == '__main__':
     else:
         print("\nSkipping POD basis initialization for Phi (using random orthogonal initialization).")
 
-    # --- 训练 (Training) ---
     print(f"\nStarting training for {run_name}...")
     start_train_time = time.time()
     online_model = train_multivar_model(
@@ -1421,7 +1398,6 @@ if __name__ == '__main__':
     end_train_time = time.time()
     print(f"Training took {end_train_time - start_train_time:.2f} seconds.")
 
-    # --- 验证 (Validation) ---
     if val_data_list: 
         print(f"\nStarting validation for {run_name}...")
         validate_multivar_model(
