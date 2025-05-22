@@ -1,7 +1,4 @@
-# =============================================================================
-#        COMPLETE CODE: Handling PDE
-#     with Control Inputs, Modified Lifting, and Multi-Variable Support
-# =============================================================================
+
 import os
 import numpy as np
 import torch
@@ -17,8 +14,8 @@ from scipy.sparse.linalg import spsolve
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -26,17 +23,12 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 2. 通用化数据集定义
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
-
         Args:
-            data_list: 包含样本字典的列表。
+            data_list: 
             train_nt_limit: If specified, truncate sequences to this length for training.
         """
         if not data_list:
@@ -45,16 +37,8 @@ class UniversalPDEDataset(Dataset):
         self.dataset_type = dataset_type
         self.train_nt_limit = train_nt_limit # Store the limit
 
-        # --- 从第一个样本推断参数 ---
         first_sample = data_list[0]
         params = first_sample.get('params', {})
-
-        # --- 获取样本中的原始nt, nx, ny ---
-        # This 'self.nt_from_sample' will be the full length in the file
-
-
-        # Determine effective nt for the dataset instance (used in __getitem__)
-
 
         if dataset_type == 'heat_delayed_feedback':
             self.nt_from_sample = first_sample['U'].shape[0]
@@ -85,14 +69,12 @@ class UniversalPDEDataset(Dataset):
             self.expected_bc_state_dim = 2 # BC_State stores [g0_t_base, gL_t_base + Nonlinear_Feedback_term]
             
         elif dataset_type == 'convdiff':
-            # 新增：Convection–Diffusion 带积分反馈
             self.nt_from_sample    = first_sample['U'].shape[0]
             self.nx_from_sample    = first_sample['U'].shape[1]
             self.state_keys        = ['U']
             self.num_state_vars    = 1
             self.nx                = self.nx_from_sample
             self.ny                = 1
-            # BC_State 存储左右两端的 u 值，BC_Control 存储左右两端的积分控制
             self.expected_bc_state_dim = 2
             
         else:
@@ -127,7 +109,6 @@ class UniversalPDEDataset(Dataset):
         sample = self.data_list[idx]
         norm_factors = {}
 
-        # --- Potentially truncate sequences ---
         current_nt = self.effective_nt # Use the effective_nt for slicing
 
         state_tensors_norm_list = []
@@ -151,7 +132,6 @@ class UniversalPDEDataset(Dataset):
             norm_factors[f'{key}_mean'] = state_mean
             norm_factors[f'{key}_std'] = state_std
 
-        # --- BC State ---
         bc_state_seq_full = sample[self.bc_state_key]
         bc_state_seq = bc_state_seq_full[:current_nt, :] # Truncate
 
@@ -175,8 +155,6 @@ class UniversalPDEDataset(Dataset):
                 norm_factors[f'{self.bc_state_key}_means'][k_dim] = mean_k
         bc_state_tensor_norm = torch.tensor(bc_state_norm).float()
 
-
-        # --- BC Control ---
         if self.num_controls > 0:
             try:
                 bc_control_seq_full = sample[self.bc_control_key]
@@ -213,11 +191,6 @@ class UniversalPDEDataset(Dataset):
         return state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors
 
 
-
-# =============================================================================
-# 3. 通用化 POD 基计算 (优化 U_B 定义)
-# =============================================================================
-# In your model/training script
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, # nt here is the TRUNCATED length
                               max_snapshots_pod=100):
@@ -328,10 +301,7 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     print(f"  Successfully computed POD basis for '{state_variable_key}' with shape {basis.shape}.")
     return basis.astype(np.float32)
 
-
-
-
-# 4.1. Feedforward 更新网络 (不变)
+# 4.1. Feedforward 
 class ImprovedUpdateFFN(nn.Module):
     def __init__(self, input_dim, hidden_dim=256, num_layers=3, dropout=0.1):
         super().__init__()
@@ -353,7 +323,7 @@ class ImprovedUpdateFFN(nn.Module):
         return out
 
 
-# 4.2. Lifting 模块: 支持多变量状态输入和多变量状态输出 (增强容量)
+# 4.2. Lifting
 class UniversalLifting(nn.Module):
     def __init__(self, num_state_vars, bc_state_dim, num_controls, output_dim_per_var, nx,
         # Increased default hidden dimensions
@@ -381,7 +351,6 @@ class UniversalLifting(nn.Module):
         self.nx = nx
         assert output_dim_per_var == nx, "output_dim_per_var must equal nx"
 
-        # --- State Branches ---
         # Create branches for each boundary state input component
         self.state_branches = nn.ModuleList()
         if self.bc_state_dim > 0:
@@ -480,7 +449,7 @@ class UniversalLifting(nn.Module):
         return U_B_stacked
 
 
-# 4.3. 多头注意力模块 (不变)
+# 4.3. MultiHeadAttentionROM
 class MultiHeadAttentionROM(nn.Module):
     # ... (keep implementation from previous response) ...
     def __init__(self, basis_dim, d_model, num_heads):
@@ -509,7 +478,7 @@ class MultiHeadAttentionROM(nn.Module):
         return z
 
 
-# 4.4. Attention-Based ROM: 支持多变量 (修正 W_Q 和 Q 计算)
+# 4.4. Attention-Based ROM
 class MultiVarAttentionROM(nn.Module):
     # <<< MODIFIED: Added use_fixed_lifting flag and related logic
     def __init__(self, state_variable_keys, nx, basis_dim, d_model,
@@ -712,15 +681,7 @@ class MultiVarAttentionROM(nn.Module):
 
     def get_basis(self, key):
         return self.Phi[key]
-        
 
-# =============================================================================
-# 5. 训练与验证函数 - 支持多变量
-# =============================================================================
-
-# =============================================================================
-# 5. 训练与验证函数 - 支持多变量
-# =============================================================================
 
 def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Added train_nt_target
                         lr=1e-3, num_epochs=50, device='cuda',
@@ -893,14 +854,12 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
 
-# In your model/training script
 def validate_multivar_model(model, data_loader, dataset_type, 
                             train_nt_for_model_training: int, 
                             T_value_for_model_training: float, 
                             full_T_in_datafile: float, 
                             full_nt_in_datafile: int, device='cuda',
                             save_fig_path='rom_result.png'):
-    # ... (initial setup, test_horizons_T_values - no changes) ...
     model.eval()
     results = {key: {'mse': [], 'rmse': [], 'relative_error': [], 'max_error': []}
                for key in model.state_keys}
@@ -935,13 +894,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
 
     if nt_loaded != full_nt_in_datafile:
         print(f"Warning: nt from val_loader ({nt_loaded}) != full_nt_in_datafile ({full_nt_in_datafile}). Will use nt_loaded as max.")
-        # This can happen if val_dataset was also truncated, or if pkl files are inconsistent.
-        # For safety, we should use the minimum of the two as the actual full length.
-        # full_nt_in_datafile = min(nt_loaded, full_nt_in_datafile) # Or just use nt_loaded
-        # However, UniversalPDEDataset for validation is set to train_nt_limit=None, so it should load the full sequence from file.
-        # So, if there's a mismatch, it implies full_nt_in_datafile parameter to this function might be wrong.
-        # Let's assume nt_loaded is the ground truth available from this sample.
-        # For calculation of nt_for_this_horizon, we still need a reference full_T and full_nt.
 
     norm_factors_sample = {}
     # ... (norm_factors_sample extraction - no changes) ...
@@ -961,7 +913,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
     # --- Calculate initial coefficients a0_dict ---
     a0_dict = {}
     BC0_full = BC_Ctrl_tensor_full_sample[:, 0, :]
-    # <<< MODIFIED HERE >>>
     U_B0_lifted = model._compute_U_B(BC0_full) 
     for k_var_idx, key in enumerate(state_keys):
         U0_full_var = state_tensors_full[k_var_idx][:, 0, :].unsqueeze(-1) 
@@ -971,9 +922,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
         a0 = torch.bmm(Phi_T, U0_full_var - U_B0_var).squeeze(-1) 
         a0_dict[key] = a0
 
-    # --- Loop through each test horizon ---
-    # ... (rest of validation loop, plotting, metrics - no changes in core logic) ...
-    # ... but save_fig_path should be unique for the ablation run (handled in main) ...
+
     for T_test_horizon in test_horizons_T_values:
         # nt_for_this_horizon = int((T_test_horizon / full_T_in_datafile) * (full_nt_in_datafile - 1)) + 1
         # nt_for_this_horizon = min(nt_for_this_horizon, nt_loaded) # Cap at available data from loader
@@ -999,10 +948,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
         # Ensure at least one row of subplots even if num_vars_plot is 0 (though it shouldn't be)
         fig_rows = max(1, num_vars_plot)
         fig, axs = plt.subplots(fig_rows, 3, figsize=(18, 5 * fig_rows), squeeze=False)
-        
-        # Determine L for plotting from dataset_params if available, else default
-        # This part was missing in the original, add it for completeness
-        # L_vis = dataset_params_for_plot.get('L', 1.0) if 'dataset_params_for_plot' in globals() else 1.0
+
         L_vis = 1.0 # Placeholder, should get from actual data params if varied
 
         for k_var_idx, key_var in enumerate(state_keys):
@@ -1055,8 +1001,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
             plt.colorbar(im2, ax=axs[k_var_idx,2])
             for j_plot in range(3): axs[k_var_idx,j_plot].set_xlabel("x")
 
-        # Calculate overall relative error for this horizon by concatenating all variables' data
-        # Ensure all elements in the list are numpy arrays before concatenating
         if combined_pred_denorm_list and combined_gt_denorm_list:
             all_preds_flat = np.concatenate([p.flatten() for p in combined_pred_denorm_list])
             all_gts_flat = np.concatenate([g.flatten() for g in combined_gt_denorm_list])
@@ -1089,13 +1033,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
             print(f"  {key_sum}: MSE={avg_mse:.4e}, RMSE={avg_rmse:.4e}, RelErr={avg_rel:.4e}, MaxErr={avg_max:.4e}")
     if overall_rel_err_T_train_horizon: # Use the renamed variable
         print(f"Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_T_train_horizon):.4e}")
-        
-# =============================================================================
-# 6. 主流程 - 可选择数据集类型
-# =============================================================================
-# =============================================================================
-# 6. 主流程 - 可选择数据集类型
-# =============================================================================
+
 import pickle
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
