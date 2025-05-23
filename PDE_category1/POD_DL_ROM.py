@@ -1,6 +1,7 @@
-# pod_dl_rom.py
+# POD_DL_ROM
 # =============================================================================
-#       POD-DL-ROM Implementation (Adapted for Task)
+#    POD_DL_ROM (Adapted for Task1) ref:https://github.com/stefaniafresca/POD-DL-ROM
+# POD-DL-ROM: Enhancing deep learning-based reduced order models for nonlinear parametrized PDEs by proper orthogonal decomposition, Computer Methods in Applied Mechanics and Engineering
 # =============================================================================
 import os
 import numpy as np
@@ -16,8 +17,8 @@ import pickle
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -25,13 +26,10 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
 print(f"POD-DL-ROM Script (Task Adapted) started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Corrected Version from previous responses)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         if not data_list:
@@ -136,9 +134,7 @@ class UniversalPDEDataset(Dataset):
         out_state = state_tensors_norm_list[0] if self.num_state_vars==1 else state_tensors_norm_list
         return out_state, bc_ctrl_tensor, norm_factors
 
-# =============================================================================
-# POD Basis Computation (Retained from your POD-DL-ROM code)
-# =============================================================================
+
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, max_snapshots_pod=100):
     snapshots = []; count = 0
@@ -177,9 +173,8 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     print(f"  POD basis computed for '{state_variable_key}', shape {basis.shape}.")
     return basis.astype(np.float32)
 
-# =============================================================================
-# 1. Convolutional Autoencoder (CAE) Components
-# =============================================================================
+# 1. Convolutional Autoencoder Components
+
 class Encoder(nn.Module):
     def __init__(self, input_channels, N_pod, n_latent, conv_channels=[16,32,64], fc_layers=[128]):
         super().__init__(); self.N_pod=N_pod; self.input_channels=input_channels; self.n_latent=n_latent
@@ -220,9 +215,7 @@ class Decoder(nn.Module):
         if x.shape[2]!=self.spatial_dim_sqrt or x.shape[3]!=self.spatial_dim_sqrt: x=F.interpolate(x,size=(self.spatial_dim_sqrt,self.spatial_dim_sqrt),mode='bilinear',align_corners=False)
         return x.view(B,self.output_channels,self.N_pod)
 
-# =============================================================================
-# 2. Deep Feedforward Network (DFNN)
-# =============================================================================
+
 class DFNN(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_layers=[256,512,256], activation=nn.GELU):
         super().__init__(); layers=[]; current_dim=input_dim
@@ -230,9 +223,7 @@ class DFNN(nn.Module):
         layers.append(nn.Linear(current_dim,output_dim)); self.net=nn.Sequential(*layers)
     def forward(self,x): return self.net(x)
 
-# =============================================================================
-# 3. POD-DL-ROM Model Class
-# =============================================================================
+
 class POD_DL_ROM(nn.Module):
     def __init__(self,V_N_dict,n_latent,dfnn_input_dim,N_pod,num_state_vars,encoder_conv_channels=[16,32,64],encoder_fc_layers=[128],decoder_fc_layers=[128],dfnn_hidden_layers=[256,512,256]):
         super().__init__(); self.state_keys=list(V_N_dict.keys()); self.num_state_vars=num_state_vars; self.N_pod=N_pod; self.n_latent=n_latent
@@ -264,9 +255,7 @@ class POD_DL_ROM(nn.Module):
         u_h_predicted_dict,u_N_predicted_stacked=self.decode_and_reconstruct(u_n_predicted)
         return u_h_predicted_dict,u_N_predicted_stacked
 
-# =============================================================================
-# 4. Training Function (Adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
+
 def train_pod_dl_rom(model, data_loader, dataset_type, train_nt_for_model, # Added
                      lr=1e-3, num_epochs=100, device='cuda',
                      checkpoint_path='pod_dl_rom_ckpt.pt', clip_grad_norm=1.0, omega_h=0.5):
@@ -335,9 +324,7 @@ def train_pod_dl_rom(model, data_loader, dataset_type, train_nt_for_model, # Add
     if os.path.exists(checkpoint_path): print(f"Loading best POD-DL-ROM model"); ckpt=torch.load(checkpoint_path,map_location=device); model.load_state_dict(ckpt['model_state_dict'])
     return model
 
-# =============================================================================
-# 5. Validation Function (Adapted for Multi-Horizon Task)
-# =============================================================================
+
 def validate_pod_dl_rom(model, data_loader, dataset_type, # Changed for multiple plots
                         train_nt_for_model_training: int, T_value_for_model_training: float,
                         full_T_in_datafile: float, full_nt_in_datafile: int,
@@ -385,12 +372,10 @@ def validate_pod_dl_rom(model, data_loader, dataset_type, # Changed for multiple
                 # Physical time for this evaluation step in the current horizon
                 current_physical_time = (t_eval_idx / (nt_for_this_horizon -1 if nt_for_this_horizon > 1 else 1)) * T_horizon_current
                 
-                # Normalize this physical time with respect to the *training duration* for DFNN input
-                # This means DFNN will see normalized time > 1 for extrapolation
+
                 time_norm_for_dfnn = torch.tensor([current_physical_time / T_value_for_model_training], device=device).float().unsqueeze(0) # [1,1]
                 
                 # BC/Control at the actual physical time step from full sequence
-                # Find the closest index in full_nt_in_datafile corresponding to current_physical_time
                 actual_t_idx_in_file = min(int(round((current_physical_time / full_T_in_datafile) * (full_nt_in_datafile - 1))), full_nt_in_datafile -1)
                 BC_Ctrl_t_actual = BC_Ctrl_seq_norm_full[actual_t_idx_in_file:actual_t_idx_in_file+1, :] # [1, bc_ctrl_dim]
 
@@ -456,12 +441,9 @@ def validate_pod_dl_rom(model, data_loader, dataset_type, # Changed for multiple
             avg_rel=np.mean(results_primary_horizon[key_val]['relative_error'])
             print(f"  Var '{key_val}': Avg MSE={avg_mse:.3e}, RMSE={avg_rmse:.3e}, RelErr={avg_rel:.3e}")
     if overall_rel_err_primary_horizon: print(f"  Overall RelErr @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.3e}")
-    print("------------------------")
 
 
-# =============================================================================
-# 6. Main Execution Block
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy'], help='Type of dataset to generate.')
@@ -479,10 +461,10 @@ if __name__ == '__main__':
     print(f"Datafile T={FULL_T_IN_DATAFILE}, nt={FULL_NT_IN_DATAFILE}")
     print(f"Training T={TRAIN_T_TARGET}, nt={TRAIN_NT_FOR_MODEL}")
 
-    # POD-DL-ROM Hyperparameters from original script
-    N_pod_dim = 64 # Example: 8x8 feature maps for CAE input (must be perfect square)
-    n_latent_dim = 8 # Example, adjust based on complexity. Orig had 2-3. Let's make it a bit larger.
-    LEARNING_RATE = 1e-4; BATCH_SIZE = 32; NUM_EPOCHS = 80 # Adjusted epochs
+    N_pod_dim = 32 
+    n_latent_dim = 8 
+    LEARNING_RATE = 1e-4; BATCH_SIZE = 32
+    NUM_EPOCHS = 150 # Adjusted epochs
     CLIP_GRAD_NORM = 1.0; OMEGA_H = 0.5
 
     dataset_params_for_plot = {}
