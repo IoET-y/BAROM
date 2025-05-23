@@ -1,3 +1,8 @@
+# DeepOnet
+# =============================================================================
+#  DeepONet (Adapted for Task1) ref:https://github.com/lululxvi/deeponet
+# L. Lu, P. Jin, G. Pang, Z. Zhang, & G. E. Karniadakis. Learning nonlinear operators via DeepONet based on the universal approximation theorem of operators. Nature Machine Intelligence, 3, 218-229, 2021.
+# =============================================================================
 import os
 import numpy as np
 import torch
@@ -14,8 +19,8 @@ import pickle
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -23,12 +28,7 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-
-# =============================================================================
-# 2. 通用化数据集定义 (Corrected version with train_nt_limit)
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, stats_calculation_length, sequence_length_to_return=None):
         if not data_list:
@@ -41,18 +41,16 @@ class UniversalPDEDataset(Dataset):
         self.nt_from_sample_file=0
         self.nx_from_sample_file=0
         self.ny_from_sample_file=1
-        # ... (设置 self.nt_from_sample_file, self.nx_from_sample_file, etc. 如前) ...
-        # (例如，如果dataset_type是 'advection', self.state_keys = ['U'], self.num_state_vars = 1 等)
         if self.dataset_type == 'advection' or self.dataset_type == 'burgers':
             self.nt_from_sample_file = first_sample['U'].shape[0]
             self.nx_from_sample_file = first_sample['U'].shape[1]
             self.state_keys = ['U']; self.num_state_vars = 1
-            self.expected_bc_state_dim = 2 # 示例，具体根据您的数据
+            self.expected_bc_state_dim = 2 
         elif self.dataset_type == 'euler':
             self.nt_from_sample_file = first_sample['rho'].shape[0]
             self.nx_from_sample_file = first_sample['rho'].shape[1]
             self.state_keys = ['rho', 'u']; self.num_state_vars = 2
-            self.expected_bc_state_dim = 4 # 示例
+            self.expected_bc_state_dim = 4 
         elif self.dataset_type == 'darcy':
             self.nt_from_sample_file=first_sample['P'].shape[0]
             self.nx_from_sample_file = params.get('nx', first_sample['P'].shape[1])
@@ -63,17 +61,16 @@ class UniversalPDEDataset(Dataset):
         else:
             raise ValueError(f"Unknown dataset_type: {self.dataset_type}")
 
-        self.nx = self.nx_from_sample_file # 确保 nx, ny 等属性被正确设置
+        self.nx = self.nx_from_sample_file 
 
         self.stats_calc_len = stats_calculation_length
         self.seq_len_to_return = sequence_length_to_return if sequence_length_to_return is not None else self.nt_from_sample_file
 
-        self.bc_state_key = 'BC_State' # 确保这些key存在于您的数据中
-        # ... (获取 bc_state_dim 和 num_controls 如前)
-        # 在__init__中获取正确的bc_state_dim 和 num_controls
+        self.bc_state_key = 'BC_State' 
+
         if self.bc_state_key not in first_sample:
             raise KeyError(f"'{self.bc_state_key}' not found in the first sample!")
-        self.bc_state_dim = first_sample[self.bc_state_key].shape[1] # 或者使用expected_bc_state_dim并做检查
+        self.bc_state_dim = first_sample[self.bc_state_key].shape[1] 
 
         self.bc_control_key = 'BC_Control'
         if self.bc_control_key in first_sample and first_sample[self.bc_control_key] is not None and first_sample[self.bc_control_key].size > 0 :
@@ -89,13 +86,10 @@ class UniversalPDEDataset(Dataset):
         sample = self.data_list[idx]
         norm_factors = {}
     
-        # 安全地确定用于计算统计数据的实际长度
-        # (确保 self.stats_calc_len 不超过样本的实际nt长度)
+
         current_sample_nt = sample[self.state_keys[0]].shape[0]
         effective_stats_len = min(self.stats_calc_len, current_sample_nt)
     
-        # --- 1. 计算 norm_factors (基于 [0:effective_stats_len] 段) ---
-        # 状态变量的 norm_factors
         temp_state_means = {}
         temp_state_stds = {}
         for key in self.state_keys:
@@ -107,7 +101,6 @@ class UniversalPDEDataset(Dataset):
             norm_factors[f'{key}_mean'] = mean_val
             norm_factors[f'{key}_std'] = std_val
     
-        # BC_State 的 norm_factors
         bc_state_seq_for_stats = sample[self.bc_state_key][:effective_stats_len, :]
         norm_factors[f'{self.bc_state_key}_means'] = np.zeros(self.bc_state_dim)
         norm_factors[f'{self.bc_state_key}_stds'] = np.ones(self.bc_state_dim)
@@ -122,15 +115,11 @@ class UniversalPDEDataset(Dataset):
             if std_k > 1e-8:
                 temp_bc_state_stds[k_dim] = std_k
                 norm_factors[f'{self.bc_state_key}_stds'][k_dim] = std_k
-            # else std_k 保持为1 (来自初始化)
     
-        # BC_Control 的 norm_factors (如果存在)
         temp_bc_control_means = None
         temp_bc_control_stds = None
         if self.num_controls > 0:
-            # 确保 sample[self.bc_control_key] 存在且有效
             if self.bc_control_key not in sample or sample[self.bc_control_key] is None or sample[self.bc_control_key].size == 0:
-                 # 根据您的数据特性决定如何处理，这里假设如果声明了num_controls > 0，数据就应该存在
                 raise ValueError(f"BC_Control data missing or empty in sample {idx} but num_controls={self.num_controls}")
     
             bc_control_seq_for_stats = sample[self.bc_control_key][:effective_stats_len, :]
@@ -148,14 +137,12 @@ class UniversalPDEDataset(Dataset):
                 if std_k > 1e-8:
                     temp_bc_control_stds[k_dim] = std_k
                     norm_factors[f'{self.bc_control_key}_stds'][k_dim] = std_k
-                # else std_k 保持为1
     
-        # --- 2. 使用计算出的 norm_factors 归一化完整序列 ---
         normalized_full_state_tensors_list = []
         for key in self.state_keys:
             full_state_seq_original = sample[key]
-            mean_val = temp_state_means[key] # 使用从 stats_len 计算的均值
-            std_val = temp_state_stds[key]   # 使用从 stats_len 计算的标准差
+            mean_val = temp_state_means[key] 
+            std_val = temp_state_stds[key]   
             normalized_full_seq = (full_state_seq_original - mean_val) / std_val
             normalized_full_state_tensors_list.append(torch.tensor(normalized_full_seq).float())
     
@@ -178,7 +165,6 @@ class UniversalPDEDataset(Dataset):
             bc_control_tensor_norm_full = torch.tensor(bc_control_norm_full_np).float()
     
     
-        # --- 3. 截取归一化后的序列到 self.seq_len_to_return ---
         effective_output_len = min(self.seq_len_to_return, current_sample_nt)
     
         output_state_tensors_list = []
@@ -193,9 +179,8 @@ class UniversalPDEDataset(Dataset):
     
         return output_state_tensors, final_bc_ctrl_tensor_norm, norm_factors
         
-# =============================================================================
 # DeepONet Components
-# =============================================================================
+
 class BranchNet(nn.Module):
     def __init__(self, num_state_vars, nx, bc_ctrl_dim, cnn_out_dim=64, fnn_out_dim=64, combined_dim=128, output_size=128):
         super().__init__()
@@ -256,9 +241,7 @@ class DeepONetStepper(nn.Module):
         u_np1_pred = torch.matmul(trunk_out, branch_out_reshaped) # [B, nx, num_output_vars]
         return u_np1_pred
 
-# =============================================================================
-# DeepONet Training Function (Adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
+
 def train_deeponet_stepper(model, data_loader, dataset_type, train_nt_for_model, # Added train_nt_for_model
                            lr=1e-3, num_epochs=50, device='cuda',
                            checkpoint_path='don_checkpoint.pt', clip_grad_norm=1.0):
@@ -346,9 +329,7 @@ def train_deeponet_stepper(model, data_loader, dataset_type, train_nt_for_model,
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
 
-# =============================================================================
-# DeepONet Validation Function (Autoregressive Rollout for Multiple Horizons)
-# =============================================================================
+
 def validate_deeponet_stepper(model, data_loader, dataset_type,
                               train_nt_for_model_training: int,
                               T_value_for_model_training: float,
@@ -503,9 +484,7 @@ def validate_deeponet_stepper(model, data_loader, dataset_type,
     print("------------------------")
 
 
-# =============================================================================
-# Main Block - Adapted for DeepONet
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy'], help='Type of dataset to generate.')
@@ -576,8 +555,8 @@ if __name__ == '__main__':
     
     val_dataset = UniversalPDEDataset(val_data_list_split, 
                                       dataset_type=DATASET_TYPE,
-                                      stats_calculation_length=TRAIN_NT_FOR_MODEL, # 关键：使用与训练相同的统计长度
-                                      sequence_length_to_return=FULL_NT_IN_DATAFILE) # 返回完整序列用于验证评估
+                                      stats_calculation_length=TRAIN_NT_FOR_MODEL, 
+                                      sequence_length_to_return=FULL_NT_IN_DATAFILE) 
 
     num_workers = 1
     train_loader = DataLoader(train_dataset, batch_size=batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, drop_last=True)
