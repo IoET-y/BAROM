@@ -1,7 +1,7 @@
-# latent_neural_operator_autoregressive.py
+# LNO
 # =============================================================================
-#       Latent Neural Operator (LNO) Implementation
-#       Adapted for AUTOREGRESSIVE time-dependent PDE task definition.
+#     Latent Neural Operator (Adapted for Task1) ref:https://github.com/L-I-M-I-T/LatentNeuralOperator
+#Tian Wang and Chuang Wang. Latent Neural Operator for Solving Forward and Inverse PDE Problem. In Conference on Neural Information Processing Systems (NeurIPS), 2024
 # =============================================================================
 import os
 import numpy as np
@@ -21,8 +21,8 @@ import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
 
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -30,13 +30,10 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
 print(f"Latent Neural Operator (Autoregressive) Script started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Remains the same as your LNO code)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list: raise ValueError("data_list cannot be empty")
@@ -141,9 +138,7 @@ class UniversalPDEDataset(Dataset):
         return out_state, bc_ctrl_tensor, norm_factors
 
 
-# =============================================================================
-# 1. LNO Components (Remain the same as your LNO code)
-# =============================================================================
+# 1. LNO Components
 class MLP(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims, activation=nn.GELU):
         super().__init__()
@@ -238,10 +233,7 @@ class LatentNeuralOperator(nn.Module):
         branch_input = torch.cat([pos_in, val_in], dim=-1) # [B, N_points, coord_dim + num_state_vars]
         Y_hat = self.branch_projector(branch_input) # [B, N_points, D_embedding]
 
-        # Encode: Map from physical space (at t_k) to latent space
-        # Using H_latent_queries as the queries for the encoder, and X_hat/Y_hat as K/V
-        # This differs from original LNO's direct Z0 = phca.encode(X_hat, Y_hat).
-        # Let's stick to the original LNO encode for now:
+
         Z0 = self.phca_encoder.encode(X_hat, Y_hat) # [B, M_latent_points, D_embedding]
 
         ZL = self.transformer_encoder(Z0) # [B, M_latent_points, D_embedding]
@@ -258,21 +250,11 @@ class LatentNeuralOperator(nn.Module):
 
         return val_out
 
-# =============================================================================
-# 2. Training Function for LNO (Autoregressive Time-Stepper)
-# =============================================================================
-
 def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_model, # train_nt_for_model is the number of timesteps in input sequences
                              lr=1e-3, num_epochs=100, device='cuda',
                              checkpoint_path='lno_ar_checkpoint.pt', clip_grad_norm=1.0):
     model.to(device)
     optimizer = optim.AdamW(model.parameters(), lr=lr, weight_decay=1e-5)
-    # Using OneCycleLR can be effective.
-    # To make steps_per_epoch accurate for OneCycleLR when looping through time steps:
-    # num_steps_in_sequence = train_nt_for_model - 1
-    # effective_steps_per_epoch = len(data_loader) * num_steps_in_sequence
-    # scheduler = optim.lr_scheduler.OneCycleLR(optimizer, max_lr=lr, epochs=num_epochs, steps_per_epoch=effective_steps_per_epoch)
-    # Simpler scheduler for now, can be refined:
     scheduler = optim.lr_scheduler.ReduceLROnPlateau(optimizer, 'min', factor=0.5, patience=5)
 
     mse_loss = nn.MSELoss()
@@ -311,9 +293,6 @@ def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_mode
         model.train(); epoch_loss_sum=0.0; num_steps_processed=0; batch_print_time_start=time.time()
 
         for i_batch,(state_data_loaded, _, _) in enumerate(data_loader): # BC_Ctrl not used by LNO stepper for now
-            # state_data_loaded is from UniversalPDEDataset
-            # If multi-variable (Euler), it's a list of tensors. Stack them.
-            # Resulting state_seq_train shape: [B, train_nt_for_model, nx, num_vars]
             if isinstance(state_data_loaded,list):
                 # Assuming each tensor in list is [B, train_nt, nx]
                 state_seq_train=torch.stack(state_data_loaded,dim=-1).to(device)
@@ -326,8 +305,6 @@ def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_mode
                 raise ValueError(f"Data nx {nx_from_data} != model.nx {model.nx}")
             if nt_from_data != train_nt_for_model: # Should match due to train_nt_limit in Dataset
                 print(f"Warning: Data nt {nt_from_data} != train_nt_for_model {train_nt_for_model}. Using {nt_from_data}.")
-                # This could happen if train_nt_limit was smaller than a full sequence for some reason.
-                # The loop below will handle the actual nt_from_data.
 
             # Expand templates for batch
             pos_in_batch = pos_in_step_template.repeat(B, 1, 1)   # [B, nx, 2]
@@ -336,9 +313,7 @@ def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_mode
             current_batch_total_loss = 0.0
             optimizer.zero_grad()
 
-            # Loop through time steps to create (U_k, U_{k+1}) pairs
-            # nt_from_data is the number of time points in the sequence (e.g., t_0 to t_{N-1})
-            # So, there are (nt_from_data - 1) steps to predict
+
             for k_step in range(nt_from_data - 1):
                 val_in_k_step = state_seq_train[:, k_step, :, :]      # U_k: [B, nx, num_vars]
                 val_out_target_k_step = state_seq_train[:, k_step+1, :, :] # U_{k+1}: [B, nx, num_vars]
@@ -401,10 +376,6 @@ def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_mode
         model.load_state_dict(ckpt['model_state_dict'])
     return model
 
-# =============================================================================
-# 3. Validation Function for LNO (Autoregressive Multi-Horizon)
-# =============================================================================
-
 def validate_lno_autoregressive(model, data_loader, dataset_type,
                                 train_nt_for_model_training: int,
                                 T_value_for_model_training: float,
@@ -453,7 +424,6 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
             # Squeeze batch dim: [full_file_nt, nx_file, 1]
             gt_state_seq_norm_full = state_data_full_loaded.unsqueeze(-1).squeeze(0).to(device)
 
-        # CORRECTED UNPACKING: gt_state_seq_norm_full is 3D [nt, nx, num_vars]
         nt_file_actual_val, nx_file_actual_val, num_vars_actual_val = gt_state_seq_norm_full.shape
         # B_val is implicitly 1 for this single validation sample processing.
 
@@ -472,9 +442,6 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
             else:
                  norm_factors_sample[key_nf] = val_tensor_nf
 
-        # Initial condition for autoregressive rollout (U_0, normalized)
-        # gt_state_seq_norm_full is [nt, nx, num_vars]
-        # We need the first time step [0], keep it as [1, nx, num_vars] for LNO input
         current_u_norm = gt_state_seq_norm_full[0, :, :].unsqueeze(0) # Shape [1, nx, num_vars]
 
         max_nt_horizon = int((max(test_horizons_T_values) / full_T_in_datafile) * (full_nt_in_datafile - 1)) + 1
@@ -492,7 +459,6 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
 
         predictions_seq_norm_tensor = torch.stack(predictions_all_steps_norm, dim=0) # [max_nt_horizon, nx, num_vars]
 
-        # ... (rest of the validation function remains the same)
         for T_horizon_current in test_horizons_T_values:
             nt_for_this_horizon = int((T_horizon_current / full_T_in_datafile) * (full_nt_in_datafile - 1)) + 1
             nt_for_this_horizon = min(nt_for_this_horizon, max_nt_horizon)
@@ -618,10 +584,7 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
         print(f"  Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_at_T_train):.4e}")
     print("--------------------------------------")
 
-
-# =============================================================================
-# 4. Main Execution Block
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run Autoregressive LNO for PDE datasets.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy'], help='Type of dataset.')
