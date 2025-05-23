@@ -497,7 +497,7 @@ if __name__ == '__main__':
     EMBED_DIM = 64; HIDDEN_DIM = 64; GNN_LAYERS = 4
     TRANSFORMER_LAYERS = 2; NHEAD = 4
     LEARNING_RATE = 5e-4; BATCH_SIZE = 32
-    NUM_EPOCHS = 80
+    NUM_EPOCHS = 150
     CLIP_GRAD_NORM = 1.0
 
     dataset_params_for_plot = {}
