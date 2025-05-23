@@ -1,150 +1,425 @@
-# Latent Space Learning for PDE Systems with Complex Boundary (BAROM)
+Latent Space Learning for PDE Systems with Complex Boundary (BAROM)
+ ## 📜 Abstract
+Latent space Reduced Order Models (ROMs) in Scientific Machine Learning (SciML) can enhance and accelerate Partial Differential Equation (PDE) simulations. However, they often struggle with complex boundary conditions (BCs) such as time-varying, nonlinear, or state-dependent ones. Current methods for handling BCs in latent space have limitations due to representation mismatch and projection difficulty, impacting predictive accuracy and physical consistency. To address this, we introduce BAROM (Boundary-Aware Attention ROM). BAROM integrates: (1) explicit, Reduced Basis Methods-inspired boundary treatment using a modified ansatz and a learnable lifting network for complex BCs; and (2) a non-intrusive, attention-based mechanism, inspired by Galerkin Neural Operators, to learn internal field dynamics within a POD-initialized latent space. Evaluations show BAROM achieves superior accuracy and robustness on benchmark PDEs with diverse complex BCs compared to established SciML approaches.
+(Abstract from the provided LaTeX paper)
 
-## 📜 Abstract
-Latent space Reduced Order Models (ROMs) in Scientific Machine Learning (SciML) can enhance and accelerate Partial Differential Equation (PDE) simulations. However, they often struggle with complex boundary conditions (BCs) such as time-varying, nonlinear, or state-dependent ones. Current methods for handling BCs in latent space have limitations due to **representation mismatch and projection difficulty**, impacting predictive accuracy and physical consistency. To address this, we introduce BAROM (Boundary-Aware Attention ROM). BAROM integrates: (1) explicit, Reduced Basis Methods-inspired boundary treatment using a modified ansatz and a learnable lifting network for complex BCs; and (2) a non-intrusive, attention-based mechanism, inspired by Galerkin Neural Operators, to learn internal field dynamics within a POD-initialized latent space. Evaluations show BAROM achieves superior accuracy and robustness on benchmark PDEs with diverse complex BCs compared to established SciML approaches.
+📖 Overview
+This repository contains the source code, datasets, and experimental setup for the Boundary-Aware Attention Reduced Order Model (BAROM), as presented in the paper "Latent Space Learning for PDE Systems with Complex Boundary." BAROM is a novel SciML framework designed for accurate and efficient simulation of PDE systems, particularly those featuring complex, dynamic, and feedback-dependent boundary conditions.
 
----
+The core challenges addressed are the representation mismatch and projection difficulty when handling complex BCs in traditional latent space models. BAROM tackles these by:
 
-## 📖 Overview
-This repository provides the source code, datasets, and experimental setup for the **Boundary-Aware Attention Reduced Order Model (BAROM)**. This work focuses on developing a robust SciML framework for simulating PDE systems, particularly those with complex, dynamic, and feedback-dependent boundary conditions.
+Employing an explicit boundary-internal field decomposition (U=U 
+B
+​
+ +U 
+I
+​
+ ) inspired by Reduced Basis Methods (RBM).
 
-The core contributions of BAROM include:
-* **Explicit Boundary-Internal Field Decomposition**: Inspired by Reduced Basis Methods (RBM), BAROM decomposes the solution into a boundary-conforming part ($U_B$) and an internal part ($U_I$) satisfying homogeneous BCs.
-* **Learnable Lifting Network**: A neural network ($\mathcal{L}_{\text{lift}}$) learns to map time-dependent boundary parameters ($P_{BC}(t)$) to the boundary field $U_B(x,t)$.
-* **Boundary-Aware Attention (BAA) Latent Dynamics**: An attention-based mechanism evolves the latent coefficients ($\mathbf{a}(t)$) of the internal field $U_I = \mathbf{\Phi} \mathbf{a}(t)$. This evolution is explicitly conditioned on boundary parameters.
-* **Two Main Variants Explored**:
-    * **BAROM\_ImpBC (Implicit Boundary Condition Handling)**: Boundary influence on latent dynamics is primarily implicit. (See `PDE_category1/BAROM_ImpBC.py` and `PDE_category2/BAROM_ImpBC.py`)
-    * **BAROM\_ExpBC (Explicit Boundary Condition Handling)**: Explicitly processes boundary parameters to inform the latent dynamics update, aligning with Equation (9) in the paper for enhanced boundary awareness. (Primary implementation in `PDE_category2/BAROM_ExpBC.py`)
+Introducing a learnable lifting network (L 
+lift
+​
+ ) to dynamically generate the boundary-conforming field U 
+B
+​
+  from time-dependent boundary parameters P 
+BC
+​
+ (t).
 
----
+Developing a Boundary-Aware Attention (BAA) mechanism for the non-intrusive evolution of latent coefficients a(t) representing the internal field U 
+I
+​
+ =Φa(t). This evolution is explicitly conditioned on boundary parameters.
 
-## 📂 Repository Structure
+Two main variants of BAROM are explored in this work:
 
-The repository is organized into several main directories:
+BAROM_ImpBC (Implicit Boundary Condition Handling): The influence of boundary conditions on the latent dynamics is primarily learned implicitly by the attention and FFN components.
 
-* **`PDE_category1/`**: Focuses on PDE systems with externally prescribed complex boundary conditions (no internal feedback or direct control signals).
-    * `PC1_datageneration/`: Contains scripts to generate datasets for this category (e.g., `generate_datasets_PDE_task1.py`). Includes visualization notebooks like `data_visualization.ipynb` and command references (`command.md`).
-    * `datasets_full/`: Contains descriptions and potentially storage for Category 1 datasets (e.g., `dataset.md`).
-    * Python scripts (e.g., `BAROM_ImpBC.py`, `FNO.py`, `SPFNO.py`, `BENO.py`, `LNO.py`, `LNS_AE.py`, `POD_DL_ROM.py`, `DON.py`, `OPNO.py`): Implementations of BAROM and baseline models for Category 1 PDEs.
-    * `Benchmarking.py`: Script for benchmarking models on Category 1 datasets.
-    * `command_line.md`: Contains example command lines for running experiments in this category.
+BAROM_ExpBC (Explicit Boundary Condition Handling): This is the primary model detailed in the paper. It explicitly processes boundary parameters P 
+BC
+​
+ (t 
+k+1
+​
+ ) to directly inform the update of latent coefficients a(t 
+k+1
+​
+ ), aligning closely with the theoretical formulation presented (e.g., Equation 9 in the paper).
 
-* **`PDE_category2/`**: Focuses on PDE systems with complex boundary conditions involving internal-boundary coupling and/or external control signals.
-    * `generate_datasets_PDE_task2.py`: Script for generating these more complex datasets.
-    * `datasets_new_feedback/`: Contains descriptions and potentially storage for Category 2 datasets (e.g., `dataset.md`).
-    * `BAROM_ExpBC.py`: Main implementation of BAROM with explicit boundary processing (aligned with Eq. 9).
-    * `BAROM_ImpBC.py`: Implementation of BAROM with implicit boundary processing.
-    * Other Python files (e.g., `FNO.py`, `SPFNO_FULL.py`, `BENO.py`, `LNO.py`, `LNS_AE.py`, `POD_DL_ROM.py`): Implementations of baseline models.
-    * `Benchmarking4GPu.py`: Main script for benchmarking models on Category 2 datasets, including performance on GPUs.
-    * Other specialized benchmarking scripts (e.g., `BenchmarkingEBCBAROM-CDF.py`).
-    * `command_line.md`: Contains example command lines for experiments in this category.
-    * `datasetscript.md`: Further details on dataset scripting.
-    * `data_visualization.ipynb`: Notebook for visualizing Category 2 datasets.
+⚙️ The BAROM Framework (BAROM_ExpBC - Equation 9 Aligned Version)
+The primary BAROM model, BAROM_ExpBC, is implemented in PDE_category2/BAROM_ExpBC.py. It is designed for robust handling of complex boundary conditions, including those with internal-boundary coupling and external controls.
 
-* **`Ablation_study/`**: Contains scripts and configurations for ablation studies performed on BAROM.
-    * `BAROM_Non_attention.py`, `BAROM_Random_pod_initialize.py`, `BAROM_fixedlifting.py`, `BAROM_pod_dim_ablation.py`: Scripts for specific ablation experiments.
-    * `Benchmarking_Noatten_BAROM.py`, `benchmarking.py`: Benchmarking scripts for ablation variants.
-    * `ablation.md`: Description of the ablation studies.
+Core Principles (Section 3 of the Paper)
+Explicit Decomposition (Ansatz):
+The solution  
+U
+^
+  is decomposed as:
+U
+^
+ (x,t;μ)=U 
+B
+​
+ (x,t;P 
+BC
+​
+ (t),μ)+U 
+I
+​
+ (x,t;μ)
+(Eq. \ref{eq:barom_ansatz_methodology} in the paper)
 
-* **Root Directory**:
-    * `README.md`: This file.
-    * Other configuration files or utility scripts if present.
+Learnable Lifting Network (L 
+lift
+​
+ ):
+The boundary field U 
+B
+​
+  is generated by the UniversalLifting class:
+U 
+B
+​
+ (x,t;P 
+BC
+​
+ (t),μ)=Llift(PBC(t),μ;Θ 
+L 
+lift
+​
+ 
+​
+ )(x)
+(Eq. \ref{eq:lifting_network_methodology} in the paper)
 
----
+Internal Field (U 
+I
+​
+ ) Representation:
+U 
+I
+​
+ (x,t;μ)≈Φ(x)a(t;μ)
+where Φ(x) are learnable, POD-initialized basis functions (parameter model.Phi) and a(t) are latent coefficients.
+(Eq. \ref{eq:barom_internal_field_methodology} in the paper)
 
-## 🤖 The BAROM Model (Equation 9 Aligned Version - BAROM\_ExpBC)
+Latent Dynamics Evolution (F 
+latent
+​
+ )
+The evolution of latent coefficients a(t 
+k
+​
+ )→a(t 
+k+1
+​
+ ) is central to BAROM_ExpBC and is implemented in the forward_step method of the MultiVarAttentionROM class (referred to as MultiVarAttentionROMEq9 in some benchmark scripts for clarity). This aligns with the structure of Equation (9) from the paper:
+a 
+n+1
+ = 
+A
+^
+ aa 
+n
+ + 
+B
+^
+  
+w
+^
+  
+n
+ + 
+A
+^
+ BCU 
+B
+n
+​
+ −Φ 
+T
+ U 
+B
+n+1
+​
+ 
 
-The primary BAROM model, **BAROM\_ExpBC**, is implemented in `PDE_category2/BAROM_ExpBC.py`. Its core latent dynamics update aligns with Equation (9) from the paper:
-$a^{n+1} = \hat{A}_{a}a^{n} + \hat{B}\hat{w}^{n} + \hat{A}_{BC}U_{B}^{n} - \Phi^{T}U_{B}^{n+1}$
+In the code, this is achieved by:
+\mathbf{a}(t_{k+1}) = \mathbf{a}(t_k) + \Delta\mathbf{a}{\text{attn}} + \Delta\mathbf{a}{\text{ffn}} + \Delta\mathbf{a}_{\text{bc_explicit}} - \text{term_to_subtract_phiT_UBnp1}
 
-And the reconstruction is:
-$\hat{U}^{n+1} = U_{B}^{n+1} + \Phi a^{n+1}$
+Where:
 
-Key components within the `MultiVarAttentionROMEq9` class (or `MultiVarAttentionROM` in the training script `BAROM_ExpBC.py`):
-* **Lifting Network (`UniversalLifting` class)**: Generates $U_B^n$ from $P_{BC}(t_n)$ and $U_B^{n+1}$ from $P_{BC}(t_{n+1})$.
-* **Learnable Basis Functions ($\mathbf{\Phi}$)**: Stored as `model.Phi`.
-* **Latent Dynamics Update (`forward_step` method)**:
-    * `a_update_attn_val` + `alpha_var * ffn_update_intrinsic_val`: Learns the contribution analogous to $(\hat{A}_a - I)a^n$.
-    * `bc_driven_a_update_val`: Learns contributions analogous to $\hat{B}\hat{w}^n + \hat{A}_{BC}U_B^n$, derived from $P_{BC}(t_n)$.
-    * `term_to_subtract_phiT_UBnp1`: Explicitly calculates and subtracts the $\Phi^{T}U_B^{n+1}$ term.
-* **Reconstruction**: Uses $U_B^{n+1}$ and $a^{n+1}$ as per the paper's formulation.
+a(t 
+k
+​
+ ): Current latent state (a_n_var).
 
-Refer to Section 3 of the paper for a detailed methodological description.
+Δa 
+attn
+​
+ : Update from the multi-head attention mechanism (a_update_attn_val). This, along with the FFN term, learns the effects analogous to the operator  
+A
+^
+  
+a
+​
+ .
 
----
+Δa 
+ffn
+​
+ : Update from a feed-forward network (alpha_var * ffn_update_intrinsic_val).
 
-## 📊 Datasets
+\Delta\mathbf{a}_{\text{bc_explicit}}: Update derived from processing P 
+BC
+​
+ (t 
+n
+​
+ ) (boundary conditions at the current time step n) via bc_feature_processor and bc_to_a_update layers (bc_driven_a_update_val). This term learns the influence analogous to  
+B
+^
+  
+w
+^
+  
+n
+ + 
+A
+^
+ BCUB 
+n
+ .
 
-The paper evaluates BAROM on two categories of PDE problems:
+term_to_subtract_phiT_UBnp1: Explicitly computed projection −Φ 
+T
+ U 
+B
+n+1
+​
+ , where U 
+B
+n+1
+​
+ =Llift(PBC(t 
+n+1
+​
+ )).
 
-1.  **Category 1: Externally Prescribed Complex BCs**
-    * PDEs: 1D Advection, 1D Euler, 1D Burgers', 2D Darcy flow.
-    * Generation Script: `PDE_category1/PC1_datageneration/generate_datasets_PDE_task1.py`
-    * Description: See `PDE_category1/datasets_full/dataset.md`.
+Reconstruction
+The physical solution at the next time step is reconstructed as:
+U
+^
+  
+n+1
+ =U 
+B
+n+1
+​
+ +Φa 
+n+1
+ 
+(Implemented at the end of the forward_step method).
 
-2.  **Category 2: Complex BCs with Internal-Boundary Coupling and Control**
-    * PDEs: Reaction-Diffusion with Neumann Feedback (RDFNF), Heat Equation with Non-linear Gain Feedback (Heat\_NF), Convection-Diffusion with Integral Boundary Control (Convdiff).
-    * Generation Script: `PDE_category2/generate_datasets_PDE_task2.py`
-    * Description: See `PDE_category2/datasets_new_feedback/dataset.md`.
+Refer to Section 3 of the paper for a detailed methodological description and Algorithm 1 for the predictive step.
 
-Detailed information on dataset generation parameters can be found in Appendix A of the paper and the respective `dataset.md` files.
+📂 Repository Structure
+The repository is organized into three main experimental categories:
 
----
+PDE_category1/: Experiments with externally prescribed complex boundary conditions (no internal feedback).
 
-## 🚀 Getting Started
+PC1_datageneration/: Scripts for dataset generation (e.g., generate_datasets_PDE_task1.py).
 
-### Prerequisites
-* Python (3.8+ recommended)
-* PyTorch (see scripts for version, e.g., 1.8+)
-* NumPy
-* Matplotlib
-* Pickle
-* Argparse
-* Glob
+datasets_full/: Dataset descriptions (e.g., dataset.md).
 
-It is recommended to set up a Python virtual environment.
+Training scripts for BAROM_ImpBC (BAROM_ImpBC.py) and baselines (e.g., FNO.py, SPFNO.py).
 
-### 1. Datasets
-Pre-generated datasets are expected in the `PDE_category1/datasets_full/` and `PDE_category2/datasets_new_feedback/` directories. If you need to regenerate them, use the scripts mentioned in the "Datasets" section above.
-Example:
-```bash
-python PDE_category2/generate_datasets_PDE_task2.py --datatype heat_nonlinear_feedback_gain
+Benchmarking.py: Benchmarking script for this category.
 
-2. Training BAROM
-The main training scripts for BAROM are:
+command_line.md: Example commands.
 
-PDE_category2/BAROM_ExpBC.py (for Equation 9 aligned model, typically for Category 2 PDEs)
-PDE_category1/BAROM_ImpBC.py or PDE_category2/BAROM_ImpBC.py (for implicit BC handling)
-Example Training Command (BAROM_ExpBC):
+PDE_category2/: Experiments with complex boundary conditions involving internal-boundary coupling and/or external control signals. This is the primary focus for the BAROM_ExpBC model.
 
-Bash
+generate_datasets_PDE_task2.py: Dataset generation script.
 
-python PDE_category2/BAROM_ExpBC.py --datatype heat_nonlinear_feedback_gain \
-                                   --basis_dim 32 \
-                                   --d_model 512 \
-                                   --num_heads 4 \
-                                   --bc_processed_dim 64 \
-                                   --hidden_bc_processor_dim 128 \
-                                   --num_epochs 150 \
-                                   --lr 5e-4 \
-                                   --batch_size 32
-Adjust hyperparameters as needed. Checkpoints are typically saved in subdirectories like New_ckpt_explicit_bc_eq9/. Refer to PDE_category1/command_line.md and PDE_category2/command_line.md for more examples.
+datasets_new_feedback/: Dataset descriptions (e.g., dataset.md).
+
+BAROM_ExpBC.py: Main training script for the Equation 9-aligned BAROM.
+
+BAROM_ImpBC.py: Training script for the implicit BAROM variant.
+
+Baseline model implementations (e.g., SPFNO_FULL.py, BENO.py).
+
+Benchmarking4GPu.py: Main benchmarking script for this category, including GPU performance metrics.
+
+Specialized benchmarking scripts (e.g., BenchmarkingEBCBAROM-CDF.py).
+
+command_line.md, datasetscript.md: Command examples and dataset details.
+
+data_visualization.ipynb: Notebook for visualizing datasets.
+
+Ablation_study/: Scripts and configurations for ablation studies.
+
+Individual scripts for different ablations (e.g., BAROM_Non_attention.py, BAROM_Random_pod_initialize.py, BAROM_fixedlifting.py, BAROM_pod_dim_ablation.py).
+
+Benchmarking scripts for ablation variants (e.g., Benchmarking_Noatten_BAROM.py, benchmarking.py).
+
+ablation.md: Description of ablation studies.
+
+Root Directory:
+
+README.md: This file.
+
+(Other potential shared utilities or configuration files)
+
+📊 Datasets
+The research utilizes synthetically generated datasets for two categories of PDE problems, designed to test model performance under various boundary complexities.
+
+Category 1: Externally Prescribed Complex BCs
+PDEs: 1D Advection-Reaction, 1D Isothermal Euler, 1D Burgers', 2D Darcy flow.
+
+Characteristics: Time-varying, non-linear boundary conditions without internal feedback.
+
+Generation: PDE_category1/PC1_datageneration/generate_datasets_PDE_task1.py
+
+Description: See PDE_category1/datasets_full/dataset.md and Appendix A of the paper.
+
+Category 2: Complex BCs with Internal-Boundary Coupling and Control
+PDEs: Heat Equation with Delayed Integral Feedback, Reaction-Diffusion Equation with Neumann Boundary Integral Feedback, Heat Equation with Non-linear Feedback Gain, Convection-Diffusion Equation with Integral Boundary Control.
+
+Characteristics: Boundary conditions are dynamically coupled with the internal system state and may include external control signals.
+
+Generation: PDE_category2/generate_datasets_PDE_task2.py
+
+Description: See PDE_category2/datasets_new_feedback/dataset.md and Appendix A of the paper.
+
+All datasets include the solution field U(x,t), boundary state information (BC_State), and control signals (BC_Control) where applicable.
+
+🚀 Getting Started
+Prerequisites
+Python (3.8+ recommended)
+
+PyTorch (refer to script imports for specific version, e.g., 1.8+ or newer)
+
+NumPy
+
+Matplotlib
+
+SciPy (for some data generation aspects)
+
+Pickle
+
+Argparse
+
+Glob
+
+It is highly recommended to use a Python virtual environment (e.g., conda or venv).
+
+# Example using conda
+conda create -n barom_env python=3.9
+conda activate barom_env
+pip install torch torchvision torchaudio --index-url [https://download.pytorch.org/whl/cu118](https://download.pytorch.org/whl/cu118) # Adjust for your CUDA version
+pip install numpy matplotlib scipy argparse
+
+1. Dataset Generation (Optional)
+Pre-generated datasets are expected in the respective datasets_full/ and datasets_new_feedback/ directories. If you need to regenerate them:
+
+Category 1 Datasets:
+
+cd PDE_category1/PC1_datageneration/
+python generate_datasets_PDE_task1.py --datatype advection # Or euler, burgers, darcy
+cd ../.. 
+
+Category 2 Datasets:
+
+cd PDE_category2/
+python generate_datasets_PDE_task2.py --datatype heat_nonlinear_feedback_gain # Or other Category 2 types
+cd ..
+
+Ensure the output paths in the generation scripts align with where the training/benchmarking scripts expect the data.
+
+2. Training BAROM Models
+The primary training scripts are BAROM_ExpBC.py (for the Equation 9 aligned model, mainly for Category 2 PDEs) and BAROM_ImpBC.py (for Category 1 or as a baseline).
+
+Example: Training BAROM_ExpBC (Equation 9 Aligned Model)
+This model is typically trained on Category 2 datasets.
+
+python PDE_category2/BAROM_ExpBC.py \
+    --datatype heat_nonlinear_feedback_gain \
+    --basis_dim 32 \
+    --d_model 512 \
+    --num_heads 4 \
+    --bc_processed_dim 64 \
+    --hidden_bc_processor_dim 128 \
+    --num_epochs 150 \
+    --lr 5e-4 \
+    --batch_size 32
+
+Checkpoints will be saved (by default) in a subdirectory within ./New_ckpt_explicit_bc_eq9/ (or as specified in the script).
+
+Example: Training BAROM_ImpBC
+This model can be trained on Category 1 or Category 2 datasets.
+
+# For a Category 1 dataset (e.g., Advection)
+python PDE_category1/BAROM_ImpBC.py --datatype advection --basis_dim 32 --d_model 256 --num_epochs 150
+
+# For a Category 2 dataset (as a comparison to BAROM_ExpBC)
+python PDE_category2/BAROM_ImpBC.py --datatype heat_nonlinear_feedback_gain --basis_dim 32 --d_model 512 --num_epochs 150
+
+Refer to PDE_category1/command_line.md and PDE_category2/command_line.md for more command-line examples and hyperparameter options.
 
 3. Running Benchmarks
-The primary benchmarking script for Category 2 PDEs (which often includes BAROM_ExpBC) is PDE_category2/Benchmarking4GPu.py. A similar script exists for Category 1: PDE_category1/Benchmarking.py.
+Benchmarking scripts are provided to evaluate trained models against baselines.
 
-Example Benchmarking Command:
+For Category 1 PDEs: PDE_category1/Benchmarking.py
 
-Bash
+For Category 2 PDEs: PDE_category2/Benchmarking4GPu.py (includes GPU performance metrics) or the specific benchmarking script you generated for MultiVarAttentionROMEq9.
 
-python PDE_category2/Benchmarking4GPu.py --datasets heat_nonlinear_feedback_gain --models BAROM SPFNO # Add other models
-Ensure that the model configurations within the benchmark script (e.g., MODEL_CONFIGS, MODEL_TO_BENCHMARK_CONFIG) correctly point to your trained model checkpoints and use the appropriate model class name (e.g., MultiVarAttentionROMEq9 or the name used in your training script).
+Example Benchmarking Command (using Benchmarking4GPu.py for Category 2):
+
+python PDE_category2/Benchmarking4GPu.py \
+    --datasets heat_nonlinear_feedback_gain reaction_diffusion_neumann_feedback \
+    --models BAROM_ExpBC_Eq9 SPFNO LNO # Ensure 'BAROM_ExpBC_Eq9' is a defined key in the script's MODEL_CONFIGS
+                                      # pointing to your trained BAROM_ExpBC checkpoint and correct class.
+
+Important: You will need to update the MODEL_CONFIGS dictionary within the benchmark script (Benchmarking4GPu.py or your custom one) to include an entry for your trained MultiVarAttentionROMEq9 model. This entry should specify:
+
+model_class_name: e.g., MultiVarAttentionROMEq9 (or the class name in BAROM_ExpBC.py).
+
+checkpoint_filename_prefix or checkpoint_filename: To locate the saved .pt file. The load_multivar_rom_eq9_model function in the generated benchmark script uses a prefix and glob to find the latest matching checkpoint.
+
+params: The hyperparameters used to train the model, for re-instantiation.
+
+prediction_fn_name: e.g., predict_multivar_rom_eq9.
 
 4. Ablation Studies
-Scripts for ablation studies are located in the Ablation_study/ directory. Refer to Ablation_study/ablation.md for descriptions and corresponding scripts (e.g., BAROM_Non_attention.py). These can be run similarly to the training scripts.
+Scripts for ablation studies are located in the Ablation_study/ directory.
 
-📊 Results
-Quantitative results comparing BAROM with baselines are presented in Tables 1, 2, 3, and 4 of the paper. Visual comparisons can be found in Figures 2-7 in the Appendix. Efficiency metrics are detailed in Appendix F.
+Run individual ablation training scripts (e.g., Ablation_study/BAROM_Non_attention.py).
+
+Then use corresponding benchmarking scripts (e.g., Ablation_study/Benchmarking_Noatten_BAROM.py or the general Ablation_study/benchmarking.py).
+Refer to Ablation_study/ablation.md for descriptions of each study.
+
+📊 Experimental Results
+Quantitative results comparing BAROM with baselines are presented in Tables 1, 2, 3, and 4 of the paper. Visual comparisons can be found in Figures 2-7 in the Appendix of the paper. Efficiency metrics (parameters, inference time, GPU memory) are detailed in Appendix F.
+
+Ablation study results are discussed in Section 4.3 and visualized in Figure 3 of the paper.
 
 ✍️ Citation
-If you find this work useful, please cite our paper:
+If you use this work, please cite our paper:
+
+@article{YourLastNameYearBAROM,
+  title={Latent Space Learning for PDE Systems with Complex Boundary},
+  author={Your Name(s) Here},
+  journal={Submitted to NeurIPS 2025 (or Conference/Journal Name, or arXiv preprint arXiv:xxxx.xxxxx)},
+  year={2024} 
+}
+
+(Please replace with your actual publication details once available.)
+
+🤝 Acknowledgements
+(Include any acknowledgements here if applicable.)
+
+❓ Questions/Issues
+For any questions, bug reports, or issues with the code, please open an issue in this GitHub repository.
