@@ -1,6 +1,6 @@
 # POD_DL_ROM
 # =============================================================================
-#    POD_DL_ROM (Adapted for Task1) ref:https://github.com/stefaniafresca/POD-DL-ROM
+#    POD_DL_ROM (Adapted for Task2) ref:https://github.com/stefaniafresca/POD-DL-ROM
 # POD-DL-ROM: Enhancing deep learning-based reduced order models for nonlinear parametrized PDEs by proper orthogonal decomposition, Computer Methods in Applied Mechanics and Engineering
 # =============================================================================
 import os
