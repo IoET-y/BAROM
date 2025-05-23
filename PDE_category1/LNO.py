@@ -617,7 +617,7 @@ if __name__ == '__main__':
 
     LEARNING_RATE = 3e-4 # Might need adjustment
     BATCH_SIZE = 16      # Sequences per batch
-    NUM_EPOCHS = 80     # Autoregressive training might need more epochs or careful LR scheduling
+    NUM_EPOCHS = 150     # Autoregressive training might need more epochs or careful LR scheduling
     CLIP_GRAD_NORM = 1.0
 
     # --- Dataset Specific Parameters ---
