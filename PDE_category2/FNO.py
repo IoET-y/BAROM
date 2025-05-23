@@ -1,6 +1,6 @@
 # FNO
 # =============================================================================
-#   FNO (Adapted for Task1) ref:https://github.com/neuraloperator/neuraloperator
+#   FNO (Adapted for Task2) ref:https://github.com/neuraloperator/neuraloperator
 # Zongyi Li, et al. Fourier neural operator for parametric partial differen-371tial equations. ICLR 2021
 # =============================================================================
 import torch.fft
