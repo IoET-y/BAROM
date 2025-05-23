@@ -137,10 +137,7 @@ class UniversalPDEDataset(Dataset):
         out_state = state_tensors_norm_list[0] if self.num_state_vars==1 else state_tensors_norm_list
         return out_state, bc_ctrl_tensor, norm_factors
 
-# =============================================================================
-# POD Basis Computation (Retained from your POD-DL-ROM code)
-# =============================================================================
-# ... (compute_pod_basis_generic function - no changes needed)
+
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, max_snapshots_pod=100):
     snapshots = []; count = 0
