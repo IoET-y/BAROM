@@ -13,7 +13,13 @@ import pickle
 import argparse
 import glob 
 import traceback
-
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
 # --- Model Class Definitions ---
 # Copied and adapted from your provided training scripts.
 # Ensure these are the exact versions used for training the target checkpoints.
