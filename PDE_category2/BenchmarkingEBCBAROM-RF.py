@@ -13,11 +13,7 @@ import argparse
 import glob
 import traceback
 
-# =============================================================================
-# MODEL CLASS DEFINITIONS
-# (These should be identical to your training script for the model being benchmarked)
-# =============================================================================
-# 固定随机种子
+
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
