@@ -16,16 +16,13 @@ import importlib.util # To load models from user-provided files
 from matplotlib.colors import LogNorm, SymLogNorm # For advanced color scaling
 
 # --- Utility: Fixed Random Seed ---
-def set_seed(seed_value=42):
-    random.seed(seed_value)
-    np.random.seed(seed_value)
-    torch.manual_seed(seed_value)
-    if torch.cuda.is_available():
-        torch.cuda.manual_seed_all(seed_value)
-        torch.backends.cudnn.deterministic = True
-        torch.backends.cudnn.benchmark = False
-
-set_seed(42)
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
 DEVICE = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 print(f"Using device: {DEVICE}")
 
