@@ -15,7 +15,7 @@ import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
 
 # ---------------------
-# 固定随机种子
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
