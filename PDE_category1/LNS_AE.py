@@ -1,9 +1,7 @@
-# latent_dno_stepper.py
+# LNS_AE
 # =============================================================================
-#       Latent DeepONet-inspired Stepper (LNS-Stepper) Implementation
-#       Based on "Learning in latent spaces improves the predictive
-#       accuracy of deep neural operators" (Kontolati et al., 2024) concepts,
-#       adapted for a time-stepping task.
+# latent deepOnet (Adapted for Task1) ref:https://github.com/katiana22/latent-deeponet
+# Learning nonlinear operators in latent spaces for real-time predictions of complex dynamics in physical systems.Nature Communications,2024
 # =============================================================================
 import os
 import numpy as np
@@ -19,8 +17,8 @@ import pickle
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -32,9 +30,6 @@ if torch.cuda.is_available():
 
 print(f"LatentDNO-Stepper Script (Task Adapted) started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Corrected Version with pre-computed normalization stats)
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type,
                  global_norm_stats=None, # Pass pre-computed normalization statistics
@@ -136,16 +131,10 @@ class UniversalPDEDataset(Dataset):
         bc_ctrl_tensor=torch.cat((bcs_norm_tensor,bcc_norm_tensor),dim=-1)
         out_state = slist[0] if self.num_state_vars==1 else slist
         
-        # We don't need to return norm_factors if global_norm_stats are used externally for denormalization
-        # For simplicity with current baselines, we can keep returning per-sample if global_norm_stats is None
-        # However, for true fair validation, global train stats should be used.
-        # The validation loop will handle denormalization using the passed global_norm_stats.
+
         return out_state, bc_ctrl_tensor, {} # Empty dict for norm_factors
 
 
-# =============================================================================
-# 1. LNS Autoencoder Components
-# =============================================================================
 class MLP(nn.Module): # Moved MLP definition here
     def __init__(self, input_dim, output_dim, hidden_dims, activation=nn.GELU, dropout=0.0):
         super().__init__(); layers = []; current_dim = input_dim
@@ -240,9 +229,7 @@ class LNS_Autoencoder(nn.Module):
         u_t_reconstructed = self.decoder(z_t)
         return u_t_reconstructed, z_t
 
-# =============================================================================
-# 2. LNS Propagator (Latent Stepper)
-# =============================================================================
+
 class LatentStepperNet(nn.Module): # This is the "Propagator" in LNS, adapted for DeepONet-like inputs
     def __init__(self, latent_dim_c, latent_dim_x, # Latent channels and spatial size
                  bc_ctrl_input_dim, # Total dimension of concatenated BC_State and BC_Control from data
@@ -272,15 +259,6 @@ class LatentStepperNet(nn.Module): # This is the "Propagator" in LNS, adapted fo
         branch_out = self.branch_net(z_t_flat) # [B, p]
         trunk_out = self.trunk_net(bc_ctrl_next_t) # [B, p]
         
-        # Combine: element-wise product, then sum, or just sum as in standard DeepONet for scalar output
-        # For vector output (next latent state), more complex combination might be needed.
-        # Simplest combination leading to a vector:
-        # combined = branch_out * trunk_out # Element-wise product [B, p]
-        # Or, as per DeepONet paper for solution u(y) = sum(b_i(v) * t_i(y)):
-        # Here output is z_t+1, so a vector. If branch_out is coefficients and trunk_out is basis for those coeffs.
-        # For predicting the next latent state (a vector), a simple combination like sum/concat followed by MLP is common.
-        # Let's use sum then project.
-        
         combined_latent_features = branch_out + trunk_out # [B, p] (simple sum)
         
         z_next_flat_pred = self.output_projection(combined_latent_features) # [B, latent_C * latent_Nx]
@@ -288,10 +266,8 @@ class LatentStepperNet(nn.Module): # This is the "Propagator" in LNS, adapted fo
         
         return z_next_pred
 
-# =============================================================================
-# 3. Training Functions (Autoencoder & Latent Stepper)
-# =============================================================================
-# train_lns_autoencoder (largely same as before)
+
+# train_lns_autoencoder 
 def train_lns_autoencoder(autoencoder, data_loader, train_nt_for_model,
                           lr=3e-5, num_epochs=100, device='cuda',
                           checkpoint_path='lns_ae_ckpt.pt', clip_grad_norm=1.0):
@@ -406,9 +382,6 @@ def train_latent_don_stepper(latent_stepper, encoder, # Pass trained frozen enco
     if os.path.exists(checkpoint_path): print(f"Loading best LatentDON Stepper model"); ckpt=torch.load(checkpoint_path,map_location=device); latent_stepper.load_state_dict(ckpt['model_state_dict'])
     return latent_stepper
 
-# =============================================================================
-# 4. Validation Function for LNS-Stepper (Multi-Horizon)
-# =============================================================================
 def validate_latent_don_stepper(encoder, decoder, latent_stepper,
                                 data_loader, dataset_type,
                                 train_nt_for_model_training: int, T_value_for_model_training: float,
@@ -516,9 +489,7 @@ def validate_latent_don_stepper(encoder, decoder, latent_stepper,
     if overall_rel_err_primary_horizon: print(f"  Overall RelErr @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.3e}")
     print("------------------------")
 
-# =============================================================================
-# 5. Main Execution Block
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy'], help='Type of dataset to generate.')
