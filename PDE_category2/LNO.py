@@ -1,6 +1,6 @@
 # LNO
 # =============================================================================
-#     Latent Neural Operator (Adapted for Task1) ref:https://github.com/L-I-M-I-T/LatentNeuralOperator
+#     Latent Neural Operator (Adapted for Task2) ref:https://github.com/L-I-M-I-T/LatentNeuralOperator
 #Tian Wang and Chuang Wang. Latent Neural Operator for Solving Forward and Inverse PDE Problem. In Conference on Neural Information Processing Systems (NeurIPS), 2024
 # =============================================================================
 import os
