@@ -1,6 +1,7 @@
-# pod_dl_rom.py
+# POD_DL_ROM
 # =============================================================================
-#       POD-DL-ROM Implementation (Adapted for Task)
+#    POD_DL_ROM (Adapted for Task1) ref:https://github.com/stefaniafresca/POD-DL-ROM
+# POD-DL-ROM: Enhancing deep learning-based reduced order models for nonlinear parametrized PDEs by proper orthogonal decomposition, Computer Methods in Applied Mechanics and Engineering
 # =============================================================================
 import os
 import numpy as np
@@ -16,8 +17,8 @@ import pickle
 import argparse # Ensure argparse is imported
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -29,9 +30,7 @@ torch.backends.cudnn.deterministic = True
 
 print(f"POD-DL-ROM Script (Task Adapted) started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Corrected Version from previous responses)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list:
@@ -47,24 +46,8 @@ class UniversalPDEDataset(Dataset):
         self.nx_from_sample_file = 0
         self.ny_from_sample_file = 1 # Default for 1D
 
-        # --- Correctly define attributes for ALL dataset types ---
-        if self.dataset_type == 'advection' or self.dataset_type == 'burgers':
-            self.nt_from_sample_file = first_sample['U'].shape[0]
-            self.nx_from_sample_file = first_sample['U'].shape[1]
-            self.state_keys = ['U']; self.num_state_vars = 1
-            self.expected_bc_state_dim = 2
-        elif self.dataset_type == 'euler':
-            self.nt_from_sample_file = first_sample['rho'].shape[0]
-            self.nx_from_sample_file = first_sample['rho'].shape[1]
-            self.state_keys = ['rho', 'u']; self.num_state_vars = 2
-            self.expected_bc_state_dim = 4
-        elif self.dataset_type == 'darcy':
-            self.nt_from_sample_file = first_sample['P'].shape[0]
-            self.nx_from_sample_file = params.get('nx', first_sample['P'].shape[1])
-            self.ny_from_sample_file = params.get('ny', 1)
-            self.state_keys = ['P']; self.num_state_vars = 1
-            self.expected_bc_state_dim = 2
-        elif self.dataset_type in ['heat_delayed_feedback',
+
+        if self.dataset_type in ['heat_delayed_feedback',
                                    'reaction_diffusion_neumann_feedback',
                                    'heat_nonlinear_feedback_gain',
                                    'convdiff']: # Added convdiff
@@ -195,11 +178,7 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
         padding=np.zeros((current_nx,basis_dim-actual_basis_dim)); basis=np.hstack((basis,padding))
     print(f"  POD basis computed for '{state_variable_key}', shape {basis.shape}.")
     return basis.astype(np.float32)
-# =============================================================================
-# 1. Convolutional Autoencoder (CAE) Components
-# =============================================================================
-# ... (Encoder class - no changes needed)
-# ... (Decoder class - no changes needed)
+
 class Encoder(nn.Module):
     def __init__(self, input_channels, N_pod, n_latent, conv_channels=[16,32,64], fc_layers=[128]):
         super().__init__(); self.N_pod=N_pod; self.input_channels=input_channels; self.n_latent=n_latent
@@ -239,20 +218,17 @@ class Decoder(nn.Module):
         x=self.decoder_conv(x)
         if x.shape[2]!=self.spatial_dim_sqrt or x.shape[3]!=self.spatial_dim_sqrt: x=F.interpolate(x,size=(self.spatial_dim_sqrt,self.spatial_dim_sqrt),mode='bilinear',align_corners=False)
         return x.view(B,self.output_channels,self.N_pod)
-# =============================================================================
-# 2. Deep Feedforward Network (DFNN)
-# =============================================================================
-# ... (DFNN class - no changes needed)
+
+
+
 class DFNN(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_layers=[256,512,256], activation=nn.GELU):
         super().__init__(); layers=[]; current_dim=input_dim
         for hidden_dim in hidden_layers: layers.append(nn.Linear(current_dim,hidden_dim)); layers.append(activation()); current_dim=hidden_dim
         layers.append(nn.Linear(current_dim,output_dim)); self.net=nn.Sequential(*layers)
     def forward(self,x): return self.net(x)
-# =============================================================================
-# 3. POD-DL-ROM Model Class
-# =============================================================================
-# ... (POD_DL_ROM class - no changes needed)
+
+
 class POD_DL_ROM(nn.Module):
     def __init__(self,V_N_dict,n_latent,dfnn_input_dim,N_pod,num_state_vars,encoder_conv_channels=[16,32,64],encoder_fc_layers=[128],decoder_fc_layers=[128],dfnn_hidden_layers=[256,512,256]):
         super().__init__(); self.state_keys=list(V_N_dict.keys()); self.num_state_vars=num_state_vars; self.N_pod=N_pod; self.n_latent=n_latent
@@ -283,10 +259,8 @@ class POD_DL_ROM(nn.Module):
         u_n_predicted=self.dfnn(time_param_ctrl_input)
         u_h_predicted_dict,u_N_predicted_stacked=self.decode_and_reconstruct(u_n_predicted)
         return u_h_predicted_dict,u_N_predicted_stacked
-# =============================================================================
-# 4. Training Function (Adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
-# ... (train_pod_dl_rom function - no changes needed)
+
+
 def train_pod_dl_rom(model, data_loader, dataset_type, train_nt_for_model,
                      lr=1e-3, num_epochs=100, device='cuda',
                      checkpoint_path='pod_dl_rom_ckpt.pt', clip_grad_norm=1.0, omega_h=0.5):
@@ -369,10 +343,7 @@ def train_pod_dl_rom(model, data_loader, dataset_type, train_nt_for_model,
     if os.path.exists(checkpoint_path): print(f"Loading best POD-DL-ROM model"); ckpt=torch.load(checkpoint_path,map_location=device); model.load_state_dict(ckpt['model_state_dict'])
     return model
 
-# =============================================================================
-# 5. Validation Function (Adapted for Multi-Horizon Task)
-# =============================================================================
-# ... (validate_pod_dl_rom function - needs to handle new dataset types for state_keys_val)
+
 def validate_pod_dl_rom(model, data_loader, dataset_type,
                         train_nt_for_model_training: int, T_value_for_model_training: float,
                         full_T_in_datafile: float, full_nt_in_datafile: int,
@@ -380,7 +351,6 @@ def validate_pod_dl_rom(model, data_loader, dataset_type,
                         save_fig_path_prefix='pod_dl_rom_result'):
     model.eval()
     
-    # Determine state_keys_val based on dataset_type for validation
     if dataset_type in ['advection', 'burgers', 'heat_delayed_feedback', 
                         'reaction_diffusion_neumann_feedback', 
                         'heat_nonlinear_feedback_gain', 'convdiff']:
@@ -390,8 +360,7 @@ def validate_pod_dl_rom(model, data_loader, dataset_type,
     elif dataset_type == 'darcy':
         state_keys_val = ['P']
     else:
-        # Fallback to model's state_keys if dataset_type is somehow not covered above,
-        # though UniversalPDEDataset should raise an error for unknown types earlier.
+
         state_keys_val = model.state_keys 
         print(f"Warning: Unknown dataset_type '{dataset_type}' in validation, using model.state_keys: {state_keys_val}")
 
@@ -527,9 +496,7 @@ def validate_pod_dl_rom(model, data_loader, dataset_type,
     if overall_rel_err_primary_horizon: print(f"  Overall RelErr @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.3e}")
     print("------------------------")
 
-# =============================================================================
-# 6. Main Execution Block
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run POD-DL-ROM for PDE datasets.") # Corrected description
     parser.add_argument('--datatype', type=str, required=True,
@@ -558,35 +525,8 @@ if __name__ == '__main__':
     main_num_state_vars = 0
     FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 300 # MUST MATCH GENERATION
     TRAIN_T_TARGET = 1.5  
-    if DATASET_TYPE == 'advection':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/advection_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['U']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'euler':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/euler_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['rho','u']; main_num_state_vars=2
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'burgers':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/burgers_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['U']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'darcy':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/darcy_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['P']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'heat_delayed_feedback':
-        dataset_path = "./datasets_new_feedback/heat_delayed_feedback_v1_5000s_64nx_300nt.pkl" # UPDATE
-        main_state_keys=['U']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':64,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'reaction_diffusion_neumann_feedback':
+
+    if DATASET_TYPE == 'reaction_diffusion_neumann_feedback':
         dataset_path = "./datasets_new_feedback/reaction_diffusion_neumann_feedback_v1_5000s_64nx_300nt.pkl" # UPDATE
         main_state_keys=['U']; main_num_state_vars=1
         dataset_params_for_plot={'nx':64,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
