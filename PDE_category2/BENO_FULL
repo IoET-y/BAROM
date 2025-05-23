@@ -1,6 +1,7 @@
-# beno
+# BENO
 # =============================================================================
-#     BENO-inspired Time-Stepping Neural Operator Baseline (Adapted for Task)
+#     BENO-inspired Time-Stepping Neural Operator Baseline (Adapted for Task2) ref:https://github.com/AI4Science-WestlakeU/beno/tree/main
+# [ICLR24] A boundary-embedded neural operator that incorporates complex boundary shape and inhomogeneous boundary values
 # =============================================================================
 import os
 import numpy as np
@@ -18,7 +19,7 @@ import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
 # ---------------------
 # ---------------------
-# 固定随机种子
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -30,9 +31,7 @@ torch.backends.cudnn.deterministic = True
 
 print(f"BENO-Stepper Script (Task Adapted) started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Corrected Version)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         if not data_list:
@@ -192,9 +191,7 @@ class UniversalPDEDataset(Dataset):
         output_state_tensors = state_tensors_norm_list[0] if self.num_state_vars == 1 else state_tensors_norm_list
         return output_state_tensors, bc_ctrl_tensor_norm, norm_factors
 
-# =============================================================================
-# 1. Helper Modules (MLP, Basic Transformer Encoder Layer)
-# =============================================================================
+
 class MLP(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims=[], activation=nn.GELU, dropout=0.1):
         super().__init__(); layers=[]; current_dim=input_dim
@@ -221,9 +218,7 @@ class TransformerEncoderLayer(nn.Module):
         src=src+self.dropout2(src2); src=self.norm2(src)
         return src
 
-# =============================================================================
-# 2. BENO-Stepper Architecture Components
-# =============================================================================
+
 class BoundaryEmbedder(nn.Module):
     def __init__(self, num_bc_points, input_feat_dim, d_model, nhead, num_encoder_layers, output_dim):
         super().__init__()
