@@ -1,7 +1,9 @@
+# FNO
+# =============================================================================
+#   FNO (Adapted for Task1) ref:https://github.com/neuraloperator/neuraloperator
+# Zongyi Li, et al. Fourier neural operator for parametric partial differen-371tial equations. ICLR 2021
+# =============================================================================
 import torch.fft
-# =============================================================================
-#     COMPLETE CODE: FNO Baseline Adapted for Task
-# =============================================================================
 import os
 import numpy as np
 import torch
@@ -16,8 +18,7 @@ import time
 # from scipy.sparse.linalg import spsolve # Not directly used by FNO
 import pickle
 
-# ---------------------
-# 固定随机种子
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -25,19 +26,14 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
 
-# =============================================================================
-# 2. 通用化数据集定义 (WITH train_nt_limit)
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
-        通用化数据集类，适配 Advection, Euler, Burgers, Darcy。
 
         Args:
-            data_list: 包含样本字典的列表。
+            data_list: 。
             dataset_type: 'advection', 'euler', 'burgers', 或 'darcy'。
             train_nt_limit: If specified, truncate sequences to this length.
         """
@@ -50,7 +46,6 @@ class UniversalPDEDataset(Dataset):
         first_sample = data_list[0]
         params = first_sample.get('params', {})
 
-        # --- 获取样本中的原始nt, nx, ny ---
         self.nt_from_sample_file = 0 # Full length in the file for this sample
         self.nx_from_sample_file = 0
         self.ny_from_sample_file = 1 # Default for 1D
@@ -197,9 +192,8 @@ class UniversalPDEDataset(Dataset):
 
         return output_state_tensors, bc_ctrl_tensor_norm, norm_factors
 
-# =============================================================================
-# FNO Components (Helper Classes)
-# =============================================================================
+# FNO Components 
+
 class SpectralConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1):
         super(SpectralConv1d, self).__init__()
@@ -258,9 +252,6 @@ class FNO1d(nn.Module):
         x_out = self.fc2(x_out) # [B, N, C_out] (C_out is output_channels, i.e. num_state_vars)
         return x_out
 
-# =============================================================================
-# FNO Training Function (One-Step Prediction Loss, adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
 def train_fno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Added train_nt_for_model
                       lr=1e-3, num_epochs=50, device='cuda',
                       checkpoint_path='fno_checkpoint.pt', clip_grad_norm=1.0):
@@ -363,9 +354,7 @@ def train_fno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Ad
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
 
-# =============================================================================
-# FNO Validation Function (Autoregressive Rollout for Multiple Horizons)
-# =============================================================================
+
 def validate_fno_stepper(model, data_loader, dataset_type,
                          # Prefix for figure paths
                          # Parameters for defining horizons and data structure:
@@ -589,9 +578,7 @@ def validate_fno_stepper(model, data_loader, dataset_type,
         print(f"  Overall Avg Trajectory Relative Error @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.4e}")
     print("------------------------")
 
-# =============================================================================
-# Main Block - Modified to Run FNO Baseline with Task Definition
-# =============================================================================
+# main script
 if __name__ == '__main__':
     # --- Configuration ---
     DATASET_TYPE = 'burgers' # Options: 'advection', 'euler', 'burgers', 'darcy'
