@@ -535,8 +535,8 @@ if __name__ == '__main__':
     LATENT_STEPPER_TRUNK_HIDDEN = [64, 64]   # For BC_Ctrl
     LATENT_STEPPER_COMBINED_P = 128         # Output dim 'p' for branch/trunk before final projection
 
-    AE_LR = 3e-4; AE_EPOCHS = 80 # Adjust AE training
-    PROP_LR = 1e-3; PROP_EPOCHS = 70 # Adjust Stepper training
+    AE_LR = 3e-4; AE_EPOCHS = 100 # Adjust AE training
+    PROP_LR = 1e-3; PROP_EPOCHS = 150 # Adjust Stepper training
     PROP_TRAIN_ROLLOUT_STEPS = 1 # As per user request for one-step learning
 
     BATCH_SIZE = 32; CLIP_GRAD_NORM = 1.0
