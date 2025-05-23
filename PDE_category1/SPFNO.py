@@ -1,5 +1,7 @@
+# SPFNO
 # =============================================================================
-#       COMPLETE CODE: SPFNO Baseline Adapted for Task
+#  SPFNO: Spectral operator learning for PDEs with Dirichlet and Neumann boundary conditions (Adapted for Task1) ref:https://github.com/liu-ziyuan-math/SPFNO 
+#
 # =============================================================================
 import os
 import numpy as np
@@ -17,8 +19,7 @@ import torch.fft
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -26,69 +27,6 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
-
-# =============================================================================
-# 0. Fourierpack Functions (Retained from your SPFNO code)
-# =============================================================================
-# def sin_transform(u): # DST-I (scaled)
-#     Nx = u.shape[-1]
-#     if Nx <= 1: return u.clone() # Or handle appropriately (e.g. return zeros of certain shape)
-#     # DST-I is related to FFT of odd extension. For u of length N (0 to N-1), extend to 2N.
-#     # Input to FFT for DST-I is typically [0, u_0, u_1, ..., u_{N-1}, 0, -u_{N-1}, ..., -u_1]
-#     # The provided V construction is for FFT-based DCT/DST where N is number of points (Nx)
-#     # For DST-I (sin_transform for Dirichlet), typically input function is 0 at boundaries.
-#     # If u includes boundaries, they should be 0. If u is interior points of length N-2:
-#     #   V = [0, u_0, ..., u_{N-3}, 0, -u_{N-3}, ..., -u_0] for FFT of length 2(N-1)
-#     # The current implementation:
-#     # u is [B, C, Nx_pts]. If Nx_pts includes boundaries which are zero, this might be okay.
-#     # V = torch.cat([u, -u.flip(dims=[-1])[..., 1:Nx-1]], dim=-1) # Result is 2*Nx - 2
-#     # This V is typically for DST-I of u[..., 1:-1] (interior points).
-#     # If u is the full N points [u0, ..., uN-1] and u0=uN-1=0, then take u_int = u[..., 1:-1]
-#     # V_int = torch.cat([u_int, -u_int.flip(dims=[-1])[..., :-1]], dim=-1) # if u_int has N-3 points
-#     # For now, assume u is defined on N points, and DST-I is needed.
-#     # Python scipy.fft.dst(type=1) expects N points.
-#     # FFT based DST-I using `scipy.fftpack.dst`:
-#     # `y = zeros(2*N); y[1:N+1] = x; imag(fft(y))[1:N+1]/(2*N)` -> Not quite matching
-#     # A common way: x_odd = [0, x[0], ..., x[N-1], 0, -x[N-1], ..., -x[0]]. fft(x_odd).imag[:N]
-#     # The V provided seems to be for a variant for DCT-II or DST-II
-#     # Let's use a simplified RFFT for now as placeholder if issues arise,
-#     # but ideally, this should match a standard DST type or be used consistently with its inverse.
-#     # The scaling factor 1/(Nx-1) is also non-standard for typical DSTs.
-#     # Using current implementation assuming it's consistent with isin_transform
-#     if Nx < 2: return torch.zeros_like(u) # DST typically for N>=2
-#     V = torch.cat([u[..., :Nx-1], -u[..., 1:].flip(dims=[-1])], dim=-1) # Trying a common form
-#     a = -torch.fft.rfft(V, dim=-1)[...,1:Nx].imag / (Nx-1.0 if Nx >1 else 1.0) # Scaling to make it invertible with isin
-#     return a
-
-
-# def isin_transform(a, n=None): # Inverse DST-I (scaled)
-#     # 'a' are the coefficients, n is the desired output length in physical space
-#     Nx_coeffs = a.shape[-1] # This should be N-1 coeffs for DST-I of N points
-#     N_out = n if n is not None else Nx_coeffs + 1 # If a has N-1 coeffs, output has N points
-
-#     if N_out < 2: return torch.zeros(*a.shape[:-1], N_out, dtype=a.dtype, device=a.device)
-
-#     # Construct the imaginary part of the sequence for IFFT
-#     # For DST-I of N points, coeffs a_k for k=1...N-1
-#     # Input to ifft should be [0, a_1, ..., a_{N-1}, 0, -a_{N-1}, ..., -a_1] (length 2N)
-#     fft_input_imag = torch.zeros(*a.shape[:-1], 2 * (N_out-1), device=a.device, dtype=a.dtype)
-#     coeffs_to_use = min(Nx_coeffs, N_out - 1)
-
-#     fft_input_imag[..., 1:coeffs_to_use+1] = a[..., :coeffs_to_use]
-#     if N_out - 1 > coeffs_to_use : # Zero padding if N_out-1 > Nx_coeffs
-#         pass # Already zeros
-#     if N_out > 1: # Avoid issues if N_out=1
-#          fft_input_imag[..., N_out-1+1:] = -a[..., :coeffs_to_use].flip(dims=[-1])
-
-
-#     fft_input_complex = torch.zeros_like(fft_input_imag, dtype=torch.complex64)
-#     fft_input_complex.imag = -fft_input_imag * ( (N_out-1.0 if N_out > 1 else 1.0) / 2.0) # Invert scaling, add 0.5 for IFFT of DST
-
-#     # Perform IFFT. The result should be real.
-#     u_full = torch.fft.ifft(fft_input_complex, dim=-1).real
-#     u = u_full[..., :N_out] # Take the first N_out points
-#     return u
 
 
 def sin_transform(u):
@@ -172,10 +110,6 @@ def iWSWA(a, n=None):
     return torch.fft.irfft(a, n=N_out)
 
 
-# =============================================================================
-# 1. DATASET CLASS (UniversalPDEDataset - Corrected Version)
-# =============================================================================
-# Using the same corrected UniversalPDEDataset as for FNO/DeepONet
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list: raise ValueError("data_list cannot be empty")
@@ -227,8 +161,7 @@ class UniversalPDEDataset(Dataset):
         return out_state, bc_ctrl_tensor, norm_factors
 
 # =============================================================================
-# FNO Components (SpectralConv1d - unchanged from FNO/SPFNO code)
-# =============================================================================
+
 class SpectralConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1):
         super().__init__(); self.in_channels=in_channels; self.out_channels=out_channels; self.modes1=modes1
@@ -238,31 +171,7 @@ class SpectralConv1d(nn.Module):
         B=x.shape[0]; x_ft=torch.fft.rfft(x); out_ft=torch.zeros(B,self.out_channels,x.size(-1)//2+1,device=x.device,dtype=torch.cfloat)
         out_ft[:,:,:self.modes1]=self.compl_mul1d(x_ft[:,:,:self.modes1],self.weights1); return torch.fft.irfft(out_ft,n=x.size(-1))
 
-# =============================================================================
-# SPFNO Specific Components
-# =============================================================================
-# class ProjectionFilter1d(nn.Module):
-#     def __init__(self, transform_type='dirichlet'):
-#         super().__init__()
-#         self.transform_type = transform_type
-#         if transform_type == 'dirichlet': self.fwd_func=sin_transform; self.inv_func=isin_transform
-#         elif transform_type == 'neumann': self.fwd_func=cos_transform; self.inv_func=icos_transform
-#         elif transform_type == 'mixed': self.fwd_func=WSWA; self.inv_func=iWSWA
-#         else: self.fwd_func=lambda x:torch.fft.rfft(x); self.inv_func=lambda x,n:torch.fft.irfft(x,n=n) # Default to RFFT/IRFFT for periodic/None
-#         if transform_type not in ['dirichlet', 'neumann', 'mixed', 'periodic', None]:
-#             print(f"ProjectionFilter: Unknown type '{transform_type}'. Using RFFT/IRFFT.")
 
-#     def forward(self, x): # x shape: [B, C, N]
-#         N = x.shape[-1]
-#         try:
-#             x_transformed = self.fwd_func(x)
-#             x_reconstructed = self.inv_func(x_transformed, n=N)
-#             if x_reconstructed.shape[-1] != N: # Fallback padding/truncating
-#                 if x_reconstructed.shape[-1] > N: x_reconstructed = x_reconstructed[..., :N]
-#                 else: x_reconstructed = F.pad(x_reconstructed, (0, N - x_reconstructed.shape[-1]))
-#         except Exception as e:
-#             print(f"Error in ProjectionFilter (type={self.transform_type}): {e}. Input shape: {x.shape}. Returning input."); return x
-#         return x_reconstructed
 
 class ProjectionFilter1d(nn.Module):
     """ Applies specific transform and inverse to project onto space satisfying BCs. """
@@ -343,9 +252,7 @@ class SPFNO1d(nn.Module):
             x_out = x_proj_out.permute(0,2,1) # [B, N, C_out]
         return x_out
 
-# =============================================================================
-# SPFNO Training Function (Adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
+
 def train_spfno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Added
                         lr=1e-3, num_epochs=50, device='cuda',
                         checkpoint_path='spfno_checkpoint.pt', clip_grad_norm=1.0):
@@ -400,9 +307,7 @@ def train_spfno_stepper(model, data_loader, dataset_type, train_nt_for_model, # 
     if os.path.exists(checkpoint_path): print(f"Loading best SPFNO model"); ckpt=torch.load(checkpoint_path,map_location=device); model.load_state_dict(ckpt['model_state_dict'])
     return model
 
-# =============================================================================
-# SPFNO Validation Function (Autoregressive Rollout for Multiple Horizons)
-# =============================================================================
+
 def validate_spfno_stepper(model, data_loader, dataset_type,
                            train_nt_for_model_training: int, T_value_for_model_training: float,
                            full_T_in_datafile: float, full_nt_in_datafile: int,
@@ -519,9 +424,7 @@ def validate_spfno_stepper(model, data_loader, dataset_type,
     print("------------------------")
 
 
-# =============================================================================
-# Main Block - SPFNO
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy'], help='Type of dataset to generate.')
@@ -541,7 +444,8 @@ if __name__ == '__main__':
 
     # SPFNO Hyperparameters
     SPFNO_MODES = 16; SPFNO_WIDTH = 64; SPFNO_LAYERS = 4
-    LEARNING_RATE = 1e-3; BATCH_SIZE = 32; NUM_EPOCHS = 80 # Adjusted for potentially faster SPFNO training
+    LEARNING_RATE = 1e-3; BATCH_SIZE = 32
+    NUM_EPOCHS = 150 
     CLIP_GRAD_NORM = 1.0
     USE_PROJECTION_FILTER = True # Key SPFNO feature
 
