@@ -605,7 +605,7 @@ if __name__ == '__main__':
     fno_layers = 4
     learning_rate = 1e-3 # FNO can often use higher LR
     batch_size = 32
-    num_epochs = 80 # Adjust as needed
+    num_epochs = 150 # Adjust as needed
     clip_grad_norm = 1.0
 
     # --- Dataset Paths and Parameters (update paths to your ../datasets_full) ---
