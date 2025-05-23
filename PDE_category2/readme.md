@@ -1,31 +1,31 @@
-nohup python ROM_FULL.py --datatype convdiff_feedback > out_ROM_convdiff_feedback.log 2>&1 &
-nohup python ROM_FULL.py --datatype reaction_diffusion_neumann_feedback > out_ROM_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python ROM_FULL.py --datatype heat_nonlinear_feedback_gain > out_ROM_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python BAROM_ImpBC.py --datatype convdiff_feedback > out_BAROM_ImpBC_convdiff_feedback.log 2>&1 &
+nohup python BAROM_ImpBC.py --datatype reaction_diffusion_neumann_feedback > out_BAROM_ImpBC_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python BAROM_ImpBC.py --datatype heat_nonlinear_feedback_gain > out_BAROM_ImpBC_heat_nonlinear_feedback_gain.log 2>&1 &
 
-nohup python FNO_FULL.py --datatype convdiff  > out_FNO_convdiff_feedback.log 2>&1 &
-nohup python FNO_FULL.py --datatype reaction_diffusion_neumann_feedback  > out_FNO_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python FNO_FULL.py --datatype heat_nonlinear_feedback_gain > out_FNO_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python FNO.py --datatype convdiff  > out_FNO_convdiff_feedback.log 2>&1 &
+nohup python FNO.py --datatype reaction_diffusion_neumann_feedback  > out_FNO_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python FNO.py --datatype heat_nonlinear_feedback_gain > out_FNO_heat_nonlinear_feedback_gain.log 2>&1 &
 
-nohup python SPFNO_FULL.py --datatype convdiff > out_SPFNO_convdiff.log 2>&1 &
-nohup python SPFNO_FULL.py --datatype reaction_diffusion_neumann_feedback > out_SPFNO_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python SPFNO_FULL.py --datatype heat_nonlinear_feedback_gain > out_SPFNO_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python SPFNO.py --datatype convdiff > out_SPFNO_convdiff.log 2>&1 &
+nohup python SPFNO.py --datatype reaction_diffusion_neumann_feedback > out_SPFNO_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python SPFNO.py --datatype heat_nonlinear_feedback_gain > out_SPFNO_heat_nonlinear_feedback_gain.log 2>&1 &
 
-nohup python BENO_FULL.py --datatype convdiff > out_BENO_convdiff.log 2>&1 &
-nohup python BENO_FULL.py --datatype reaction_diffusion_neumann_feedback > out_BENO_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python BENO_FULL.py --datatype heat_nonlinear_feedback_gain > out_BENO_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python BENO.py --datatype convdiff > out_BENO_convdiff.log 2>&1 &
+nohup python BENO.py --datatype reaction_diffusion_neumann_feedback > out_BENO_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python BENO.py --datatype heat_nonlinear_feedback_gain > out_BENO_heat_nonlinear_feedback_gain.log 2>&1 &
 
 
-nohup python POD_DL_ROM_FULL.py --datatype convdiff > out_POD_DL_ROM_convdiff.log 2>&1 &
-nohup python POD_DL_ROM_FULL.py --datatype reaction_diffusion_neumann_feedback > out_POD_DL_ROM_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python POD_DL_ROM_FULL.py --datatype heat_nonlinear_feedback_gain > out_POD_DL_ROM_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python POD_DL_ROM.py --datatype convdiff > out_POD_DL_ROM_convdiff.log 2>&1 &
+nohup python POD_DL_ROM.py --datatype reaction_diffusion_neumann_feedback > out_POD_DL_ROM_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python POD_DL_ROM.py --datatype heat_nonlinear_feedback_gain > out_POD_DL_ROM_heat_nonlinear_feedback_gain.log 2>&1 &
 
-nohup python LNO_FULL.py --datatype convdiff > out_LNO_convdiff.log 2>&1 &
-nohup python LNO_FULL.py --datatype reaction_diffusion_neumann_feedback > out_LNO_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python LNO_FULL.py --datatype heat_nonlinear_feedback_gain > out_LNO_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python LNO.py --datatype convdiff > out_LNO_convdiff.log 2>&1 &
+nohup python LNO.py --datatype reaction_diffusion_neumann_feedback > out_LNO_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python LNO.py --datatype heat_nonlinear_feedback_gain > out_LNO_heat_nonlinear_feedback_gain.log 2>&1 &
 
-nohup python LNS_AE_FULL.py --datatype convdiff > out_LNS_AE_convdiff.log 2>&1 &
-nohup python LNS_AE_FULL.py --datatype reaction_diffusion_neumann_feedback > out_LNS_AE_reaction_diffusion_neumann_feedback.log 2>&1 &
-nohup python LNS_AE_FULL.py --datatype heat_nonlinear_feedback_gain > out_LNS_AE_heat_nonlinear_feedback_gain.log 2>&1 &
+nohup python LNS_AE.py --datatype convdiff > out_LNS_AE_convdiff.log 2>&1 &
+nohup python LNS_AE.py --datatype reaction_diffusion_neumann_feedback > out_LNS_AE_reaction_diffusion_neumann_feedback.log 2>&1 &
+nohup python LNS_AE.py --datatype heat_nonlinear_feedback_gain > out_LNS_AE_heat_nonlinear_feedback_gain.log 2>&1 &
 
 
 
