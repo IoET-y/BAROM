@@ -1,5 +1,7 @@
+# OPNO
 # =============================================================================
-#       COMPLETE CODE: OPNO Baseline Adapted for Task
+#Orthogonal Polynomial Neural Operator for PDEs with Non-periodic Boundary Conditions (Adapted for Task1) ref:https://github.com/liu-ziyuan-math/spectral_operator_learning/tree/main
+# Render unto Numerics : Orthogonal Polynomial Neural Operator for PDEs with Non-periodic Boundary Conditions
 # =============================================================================
 import os
 import numpy as np
@@ -17,11 +19,8 @@ import pickle
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# import functools # Not strictly needed for this version
 
-# ---------------------
-# 固定随机种子
+# fix seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -29,148 +28,7 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 1. DATASET CLASS (UniversalPDEDataset - Corrected Version)
-# =============================================================================
-# class UniversalPDEDataset(Dataset):
-#     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
-#         if not data_list:
-#             raise ValueError("data_list cannot be empty")
-#         self.data_list = data_list
-#         self.dataset_type = dataset_type.lower()
-#         self.train_nt_limit = train_nt_limit
-
-#         first_sample = data_list[0]
-#         params = first_sample.get('params', {})
-
-#         self.nt_from_sample_file = 0
-#         self.nx_from_sample_file = 0
-#         self.ny_from_sample_file = 1
-
-#         if self.dataset_type == 'advection' or self.dataset_type == 'burgers':
-#             self.nt_from_sample_file = first_sample['U'].shape[0]
-#             self.nx_from_sample_file = first_sample['U'].shape[1]
-#             self.state_keys = ['U']; self.num_state_vars = 1
-#             self.expected_bc_state_dim = 2
-#         elif self.dataset_type == 'euler':
-#             self.nt_from_sample_file = first_sample['rho'].shape[0]
-#             self.nx_from_sample_file = first_sample['rho'].shape[1]
-#             self.state_keys = ['rho', 'u']; self.num_state_vars = 2
-#             self.expected_bc_state_dim = 4
-#         elif self.dataset_type == 'darcy':
-#             self.nt_from_sample_file = first_sample['P'].shape[0]
-#             self.nx_from_sample_file = params.get('nx', first_sample['P'].shape[1])
-#             self.ny_from_sample_file = params.get('ny', 1)
-#             self.state_keys = ['P']; self.num_state_vars = 1
-#             self.expected_bc_state_dim = 2
-#         else:
-#             raise ValueError(f"Unknown dataset_type: {self.dataset_type}")
-
-#         self.effective_nt_for_loader = self.train_nt_limit if self.train_nt_limit is not None else self.nt_from_sample_file
-
-#         self.nx = self.nx_from_sample_file
-#         self.ny = self.ny_from_sample_file
-#         self.spatial_dim = self.nx * self.ny
-
-#         self.bc_state_key = 'BC_State'
-#         if self.bc_state_key not in first_sample:
-#             raise KeyError(f"'{self.bc_state_key}' not found in the first sample!")
-#         actual_bc_state_dim = first_sample[self.bc_state_key].shape[1]
-#         if actual_bc_state_dim != self.expected_bc_state_dim:
-#               print(f"Warning: BC_State dimension mismatch for {self.dataset_type}. "
-#                     f"Expected {self.expected_bc_state_dim}, got {actual_bc_state_dim}. "
-#                     f"Using actual dimension: {actual_bc_state_dim}")
-#               self.bc_state_dim = actual_bc_state_dim
-#         else:
-#               self.bc_state_dim = self.expected_bc_state_dim
-
-#         self.bc_control_key = 'BC_Control'
-#         if self.bc_control_key in first_sample and first_sample[self.bc_control_key] is not None and first_sample[self.bc_control_key].size > 0 :
-#             self.num_controls = first_sample[self.bc_control_key].shape[1]
-#         else:
-#             self.num_controls = 0
-
-#     def __len__(self):
-#         return len(self.data_list)
-
-#     def __getitem__(self, idx):
-#         sample = self.data_list[idx]
-#         norm_factors = {}
-#         current_nt_for_item = self.effective_nt_for_loader
-#         state_tensors_norm_list = []
-
-#         for key in self.state_keys:
-#             try:
-#                 state_seq_full = sample[key]
-#                 state_seq = state_seq_full[:current_nt_for_item, ...]
-#             except KeyError:
-#                 raise KeyError(f"State variable key '{key}' not found in sample {idx} for dataset type '{self.dataset_type}'")
-#             if state_seq.shape[0] != current_nt_for_item:
-#                  raise ValueError(f"Time dimension mismatch for {key}. Expected {current_nt_for_item}, got {state_seq.shape[0]}")
-
-#             state_mean = np.mean(state_seq)
-#             state_std = np.std(state_seq) + 1e-8
-#             state_norm = (state_seq - state_mean) / state_std
-#             state_tensors_norm_list.append(torch.tensor(state_norm).float())
-#             norm_factors[f'{key}_mean'] = state_mean
-#             norm_factors[f'{key}_std'] = state_std
-
-#         bc_state_seq_full = sample[self.bc_state_key]
-#         bc_state_seq = bc_state_seq_full[:current_nt_for_item, :]
-#         if bc_state_seq.shape[0] != current_nt_for_item:
-#             raise ValueError(f"Time dim mismatch for BC_State. Expected {current_nt_for_item}, got {bc_state_seq.shape[0]}")
-
-#         bc_state_norm = np.zeros_like(bc_state_seq, dtype=np.float32)
-#         norm_factors[f'{self.bc_state_key}_means'] = np.zeros(self.bc_state_dim)
-#         norm_factors[f'{self.bc_state_key}_stds'] = np.ones(self.bc_state_dim)
-#         for k_dim in range(self.bc_state_dim):
-#             col = bc_state_seq[:, k_dim]
-#             mean_k = np.mean(col)
-#             std_k = np.std(col)
-#             if std_k > 1e-8:
-#                 bc_state_norm[:, k_dim] = (col - mean_k) / std_k
-#                 norm_factors[f'{self.bc_state_key}_means'][k_dim] = mean_k
-#                 norm_factors[f'{self.bc_state_key}_stds'][k_dim] = std_k
-#             else:
-#                 bc_state_norm[:, k_dim] = 0.0
-#                 norm_factors[f'{self.bc_state_key}_means'][k_dim] = mean_k
-#         bc_state_tensor_norm = torch.tensor(bc_state_norm).float()
-
-#         if self.num_controls > 0:
-#             try:
-#                 bc_control_seq_full = sample[self.bc_control_key]
-#                 bc_control_seq = bc_control_seq_full[:current_nt_for_item, :]
-#                 if bc_control_seq.shape[0] != current_nt_for_item:
-#                     raise ValueError(f"Time dim mismatch for BC_Control. Expected {current_nt_for_item}, got {bc_control_seq.shape[0]}")
-#                 if bc_control_seq.shape[1] != self.num_controls:
-#                      raise ValueError(f"Control dim mismatch in sample {idx}. Expected {self.num_controls}, got {bc_control_seq.shape[1]}.")
-#                 bc_control_norm = np.zeros_like(bc_control_seq, dtype=np.float32)
-#                 norm_factors[f'{self.bc_control_key}_means'] = np.zeros(self.num_controls)
-#                 norm_factors[f'{self.bc_control_key}_stds'] = np.ones(self.num_controls)
-#                 for k_dim in range(self.num_controls):
-#                     col = bc_control_seq[:, k_dim]
-#                     mean_k = np.mean(col)
-#                     std_k = np.std(col)
-#                     if std_k > 1e-8:
-#                         bc_control_norm[:, k_dim] = (col - mean_k) / std_k
-#                         norm_factors[f'{self.bc_control_key}_means'][k_dim] = mean_k
-#                         norm_factors[f'{self.bc_control_key}_stds'][k_dim] = std_k
-#                     else:
-#                         bc_control_norm[:, k_dim] = 0.0
-#                         norm_factors[f'{self.bc_control_key}_means'][k_dim] = mean_k
-#                 bc_control_tensor_norm = torch.tensor(bc_control_norm).float()
-#             except KeyError:
-#                 bc_control_tensor_norm = torch.zeros((current_nt_for_item, self.num_controls), dtype=torch.float32)
-#                 norm_factors[f'{self.bc_control_key}_means'] = np.zeros(self.num_controls)
-#                 norm_factors[f'{self.bc_control_key}_stds'] = np.ones(self.num_controls)
-#         else:
-#             bc_control_tensor_norm = torch.empty((current_nt_for_item, 0), dtype=torch.float32)
-
-#         bc_ctrl_tensor_norm = torch.cat((bc_state_tensor_norm, bc_control_tensor_norm), dim=-1)
-#         output_state_tensors = state_tensors_norm_list[0] if self.num_state_vars == 1 else state_tensors_norm_list
-#         return output_state_tensors, bc_ctrl_tensor_norm, norm_factors
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, stats_calculation_length, sequence_length_to_return=None):
         if not data_list:
@@ -183,18 +41,17 @@ class UniversalPDEDataset(Dataset):
         self.nt_from_sample_file=0
         self.nx_from_sample_file=0
         self.ny_from_sample_file=1
-        # ... (设置 self.nt_from_sample_file, self.nx_from_sample_file, etc. 如前) ...
-        # (例如，如果dataset_type是 'advection', self.state_keys = ['U'], self.num_state_vars = 1 等)
+
         if self.dataset_type == 'advection' or self.dataset_type == 'burgers':
             self.nt_from_sample_file = first_sample['U'].shape[0]
             self.nx_from_sample_file = first_sample['U'].shape[1]
             self.state_keys = ['U']; self.num_state_vars = 1
-            self.expected_bc_state_dim = 2 # 示例，具体根据您的数据
+            self.expected_bc_state_dim = 2 
         elif self.dataset_type == 'euler':
             self.nt_from_sample_file = first_sample['rho'].shape[0]
             self.nx_from_sample_file = first_sample['rho'].shape[1]
             self.state_keys = ['rho', 'u']; self.num_state_vars = 2
-            self.expected_bc_state_dim = 4 # 示例
+            self.expected_bc_state_dim = 4 
         elif self.dataset_type == 'darcy':
             self.nt_from_sample_file=first_sample['P'].shape[0]
             self.nx_from_sample_file = params.get('nx', first_sample['P'].shape[1])
@@ -205,17 +62,16 @@ class UniversalPDEDataset(Dataset):
         else:
             raise ValueError(f"Unknown dataset_type: {self.dataset_type}")
 
-        self.nx = self.nx_from_sample_file # 确保 nx, ny 等属性被正确设置
+        self.nx = self.nx_from_sample_file 
 
         self.stats_calc_len = stats_calculation_length
         self.seq_len_to_return = sequence_length_to_return if sequence_length_to_return is not None else self.nt_from_sample_file
 
-        self.bc_state_key = 'BC_State' # 确保这些key存在于您的数据中
-        # ... (获取 bc_state_dim 和 num_controls 如前)
-        # 在__init__中获取正确的bc_state_dim 和 num_controls
+        self.bc_state_key = 'BC_State' 
+
         if self.bc_state_key not in first_sample:
             raise KeyError(f"'{self.bc_state_key}' not found in the first sample!")
-        self.bc_state_dim = first_sample[self.bc_state_key].shape[1] # 或者使用expected_bc_state_dim并做检查
+        self.bc_state_dim = first_sample[self.bc_state_key].shape[1] 
 
         self.bc_control_key = 'BC_Control'
         if self.bc_control_key in first_sample and first_sample[self.bc_control_key] is not None and first_sample[self.bc_control_key].size > 0 :
@@ -231,13 +87,11 @@ class UniversalPDEDataset(Dataset):
         sample = self.data_list[idx]
         norm_factors = {}
     
-        # 安全地确定用于计算统计数据的实际长度
-        # (确保 self.stats_calc_len 不超过样本的实际nt长度)
+
         current_sample_nt = sample[self.state_keys[0]].shape[0]
         effective_stats_len = min(self.stats_calc_len, current_sample_nt)
     
-        # --- 1. 计算 norm_factors (基于 [0:effective_stats_len] 段) ---
-        # 状态变量的 norm_factors
+
         temp_state_means = {}
         temp_state_stds = {}
         for key in self.state_keys:
@@ -264,15 +118,11 @@ class UniversalPDEDataset(Dataset):
             if std_k > 1e-8:
                 temp_bc_state_stds[k_dim] = std_k
                 norm_factors[f'{self.bc_state_key}_stds'][k_dim] = std_k
-            # else std_k 保持为1 (来自初始化)
     
-        # BC_Control 的 norm_factors (如果存在)
         temp_bc_control_means = None
         temp_bc_control_stds = None
         if self.num_controls > 0:
-            # 确保 sample[self.bc_control_key] 存在且有效
             if self.bc_control_key not in sample or sample[self.bc_control_key] is None or sample[self.bc_control_key].size == 0:
-                 # 根据您的数据特性决定如何处理，这里假设如果声明了num_controls > 0，数据就应该存在
                 raise ValueError(f"BC_Control data missing or empty in sample {idx} but num_controls={self.num_controls}")
     
             bc_control_seq_for_stats = sample[self.bc_control_key][:effective_stats_len, :]
@@ -290,9 +140,7 @@ class UniversalPDEDataset(Dataset):
                 if std_k > 1e-8:
                     temp_bc_control_stds[k_dim] = std_k
                     norm_factors[f'{self.bc_control_key}_stds'][k_dim] = std_k
-                # else std_k 保持为1
     
-        # --- 2. 使用计算出的 norm_factors 归一化完整序列 ---
         normalized_full_state_tensors_list = []
         for key in self.state_keys:
             full_state_seq_original = sample[key]
@@ -320,7 +168,6 @@ class UniversalPDEDataset(Dataset):
             bc_control_tensor_norm_full = torch.tensor(bc_control_norm_full_np).float()
     
     
-        # --- 3. 截取归一化后的序列到 self.seq_len_to_return ---
         effective_output_len = min(self.seq_len_to_return, current_sample_nt)
     
         output_state_tensors_list = []
@@ -334,9 +181,8 @@ class UniversalPDEDataset(Dataset):
         output_state_tensors = output_state_tensors_list[0] if self.num_state_vars == 1 else output_state_tensors_list
     
         return output_state_tensors, final_bc_ctrl_tensor_norm, norm_factors
-# =============================================================================
-# 2. Chebypack Functions (Retained from your OPNO code)
-# =============================================================================
+        
+
 def cheb_dct(u):
     Nx = u.shape[-1]
     if Nx <= 1: return u.clone()
@@ -383,12 +229,7 @@ def cheb_inverse_compact_dirichlet(b):
     a[..., 2:] = b[..., 2:] - b[..., :Nx-2]
     a[..., -2:] = -b[..., Nx-4:Nx-2]
     return a
-# Other compact/inverse compact (Neumann, Robin) retained as in your code if needed,
-# but default is Dirichlet for OPNO example.
 
-# =============================================================================
-# Interpolation Placeholders & CGL Grid Generation
-# =============================================================================
 def get_cgl_points(N_intervals_plus_1): # N_intervals_plus_1 is total points (nx_cgl)
     """ Generates N_intervals_plus_1 Chebyshev-Gauss-Lobatto points in [-1, 1]. """
     if N_intervals_plus_1 <= 1: return np.array([0.0], dtype=np.float32) # Or [-1.0] if N=1
@@ -420,9 +261,8 @@ def interpolate_cgl_to_uniform(data_cgl, x_cgl_np, x_uniform_np):
             data_uniform_np[b_idx, :, c_idx] = np.interp(x_uniform_np, x_cgl_np, data_cgl_np[b_idx, :, c_idx])
     return torch.from_numpy(data_uniform_np).to(data_cgl.device)
 
-# =============================================================================
-# OPNO Specific Components
-# =============================================================================
+# OPNO Components
+
 class ChebyshevSpectralConv1d_OPNO(nn.Module):
     def __init__(self, in_channels, out_channels, modes1, bc_type='dirichlet'): # Default bc_type
         super().__init__()
@@ -487,9 +327,7 @@ class OPNO1d_Stepper(nn.Module):
         x_out = self.fc2(x_out) # [B, N_cgl, C_out] (C_out is num_output_state_vars)
         return x_out
 
-# =============================================================================
-# OPNO Training Function (Adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
+
 def train_opno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Added train_nt_for_model
                        nx_uniform_data: int, domain_L_data: float, no_interp_if_match: bool = True, device='cuda',
                        checkpoint_path='opno_checkpoint.pt',lr=1e-3, num_epochs=50, clip_grad_norm=1.0):
@@ -592,9 +430,6 @@ def train_opno_stepper(model, data_loader, dataset_type, train_nt_for_model, # A
     return model
 
 
-# =============================================================================
-# OPNO Validation Function (Autoregressive Rollout for Multiple Horizons)
-# =============================================================================
 def validate_opno_stepper(model, data_loader, dataset_type,
                           train_nt_for_model_training: int, T_value_for_model_training: float,
                           full_T_in_datafile: float, full_nt_in_datafile: int,
@@ -692,7 +527,6 @@ def validate_opno_stepper(model, data_loader, dataset_type,
                 if abs(T_horizon_current - T_value_for_model_training) < 1e-6:
                     results_primary_horizon[key_val]['mse'].append(mse_k_hor)
                     results_primary_horizon[key_val]['relative_error'].append(rel_err_k_hor)
-            # ... (overall rel err calculation)
             U_pred_vec_hor = np.concatenate(combined_pred_list_horizon); U_gt_vec_hor = np.concatenate(combined_gt_list_horizon)
             overall_rel_err_val = np.linalg.norm(U_pred_vec_hor - U_gt_vec_hor) / (np.linalg.norm(U_gt_vec_hor) + 1e-10)
             print(f"    Overall RelErr @ T={T_horizon_current:.1f}: {overall_rel_err_val:.3e}")
@@ -700,10 +534,7 @@ def validate_opno_stepper(model, data_loader, dataset_type,
                 overall_rel_err_primary_horizon.append(overall_rel_err_val)
 
 
-            # Visualization (Identical to FNO/DeepONet, ensure title is "OPNO Pred")
-            # ... (Plotting logic as in FNO/DeepONet, ensure title says "OPNO Pred") ...
             fig, axs = plt.subplots(num_state_vars_val, 3, figsize=(18, 5 * num_state_vars_val), squeeze=False)
-            # ... (Copy plotting code from validate_fno_stepper, change "FNO Pred" to "OPNO Pred")
             fig_L = dataset_params_for_plot.get('L', 1.0); fig_nx = dataset_params_for_plot.get('nx', nx_uniform_data); fig_ny = dataset_params_for_plot.get('ny', 1)
             for k_idx, key_val in enumerate(state_keys_val):
                 gt_plot = U_gt_denorm_horizon[key_val]; pred_plot = U_pred_denorm_horizon[key_val]; diff_plot = np.abs(pred_plot - gt_plot)
@@ -724,7 +555,6 @@ def validate_opno_stepper(model, data_loader, dataset_type,
 
 
     print(f"\n--- OPNO Validation Summary (Metrics for T={T_value_for_model_training:.1f}) ---")
-    # ... (Summary printing from FNO/DeepONet validation) ...
     for key_val in state_keys_val:
         if results_primary_horizon[key_val]['mse']:
             avg_mse = np.mean(results_primary_horizon[key_val]['mse']); avg_rmse = np.sqrt(avg_mse)
@@ -734,9 +564,7 @@ def validate_opno_stepper(model, data_loader, dataset_type,
         print(f"  Overall Avg RelErr @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.3e}")
     print("------------------------")
 
-# =============================================================================
-# Main Block - Adapted for OPNO
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy'], help='Type of dataset to generate.')
@@ -759,13 +587,12 @@ if __name__ == '__main__':
     opno_width = 64       # Feature width in OPNO layers
     opno_layers = 4
     opno_bc_type = 'dirichlet' # Default for OPNO example; 'mixed' or specific for others
-    # Number of CGL points for OPNO's internal representation.
-    # Can be same as data's uniform grid size, or different.
-    # If different, interpolation is used. If same, can be skipped.
     opno_nx_cgl = 128 # Example: OPNO might work on a different grid size internally
-    # If opno_nx_cgl is same as data's nx, set no_interp_if_match=True
 
-    learning_rate = 1e-3; batch_size = 32; num_epochs = 80; clip_grad_norm = 1.0
+    learning_rate = 1e-3
+    batch_size = 32
+    num_epochs = 150
+    clip_grad_norm = 1.0
 
     dataset_params_for_plot = {}
     if DATASET_TYPE == 'advection':
@@ -795,11 +622,9 @@ if __name__ == '__main__':
     try:
         with open(dataset_path, 'rb') as f: data_list_all = pickle.load(f)
         print(f"Loaded {len(data_list_all)} samples.")
-        # ... (File parameter verification from previous responses) ...
     except FileNotFoundError: print(f"Error: Dataset file not found: {dataset_path}"); exit()
     if not data_list_all: print("No data loaded, exiting."); exit()
 
-    # Update dataset_params_for_plot with actual file values if they were read
     if data_list_all:
         sample_params_check = data_list_all[0].get('params', {})
         file_L_check = sample_params_check.get('L')
@@ -811,10 +636,8 @@ if __name__ == '__main__':
     random.shuffle(data_list_all)
     n_total = len(data_list_all); n_train = int(0.8 * n_total)
     train_data_list_split = data_list_all[:n_train]; val_data_list_split = data_list_all[n_train:]
-    # ... (Print train/val split size)
 
-    # train_dataset = UniversalPDEDataset(train_data_list_split, dataset_type=DATASET_TYPE, train_nt_limit=TRAIN_NT_FOR_MODEL)
-    # val_dataset = UniversalPDEDataset(val_data_list_split, dataset_type=DATASET_TYPE, train_nt_limit=None)
+
     train_dataset = UniversalPDEDataset(
         data_list=train_data_list_split,
         dataset_type=DATASET_TYPE,
@@ -867,7 +690,6 @@ if __name__ == '__main__':
         checkpoint_path=checkpoint_path,
         lr=learning_rate, num_epochs=num_epochs, clip_grad_norm=clip_grad_norm
     )
-    # ... (End training time print)
 
     if val_data_list_split:
         print(f"\nStarting validation for OPNO on {DATASET_TYPE}...")
@@ -881,5 +703,4 @@ if __name__ == '__main__':
             no_interp_if_match=no_interp_flag, device=device,
             save_fig_path_prefix=save_fig_path_prefix
         )
-    # ... (Final print statements) ...
     print(f"Run finished: {run_name}") # etc.
