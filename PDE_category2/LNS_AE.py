@@ -1,9 +1,7 @@
-# latent_dno_stepper.py
+# LNS_AE
 # =============================================================================
-#       Latent DeepONet-inspired Stepper (LNS-Stepper) Implementation
-#       Based on "Learning in latent spaces improves the predictive
-#       accuracy of deep neural operators" (Kontolati et al., 2024) concepts,
-#       adapted for a time-stepping task.
+# latent deepOnet (Adapted for Task1) ref:https://github.com/katiana22/latent-deeponet
+# Learning nonlinear operators in latent spaces for real-time predictions of complex dynamics in physical systems.Nature Communications,2024
 # =============================================================================
 import os
 import numpy as np
@@ -18,9 +16,9 @@ import time
 import pickle
 import argparse # Added argparse
 import scipy.sparse as sp
-from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+from scipy.sparse.linalg import spsolve 
+
+
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -32,9 +30,7 @@ if torch.cuda.is_available():
 
 print(f"LatentDNO-Stepper Script (Task Adapted) started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Corrected Version with pre-computed normalization stats)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type,
                  global_norm_stats=None, # Pass pre-computed normalization statistics
@@ -50,17 +46,7 @@ class UniversalPDEDataset(Dataset):
 
         self.nt_from_sample_file=0; self.nx_from_sample_file=0; self.ny_from_sample_file=1
         
-        # --- Correctly define attributes for ALL dataset types ---
-        if self.dataset_type in ['advection', 'burgers']:
-            self.nt_from_sample_file=first_sample['U'].shape[0]; self.nx_from_sample_file=first_sample['U'].shape[1]
-            self.state_keys=['U']; self.num_state_vars=1; self.expected_bc_state_dim=2
-        elif self.dataset_type == 'euler':
-            self.nt_from_sample_file=first_sample['rho'].shape[0]; self.nx_from_sample_file=first_sample['rho'].shape[1]
-            self.state_keys=['rho','u']; self.num_state_vars=2; self.expected_bc_state_dim=4
-        elif self.dataset_type == 'darcy':
-            self.nt_from_sample_file=first_sample['P'].shape[0]; self.nx_from_sample_file=params.get('nx', first_sample['P'].shape[1])
-            self.ny_from_sample_file=params.get('ny',1); self.state_keys=['P']; self.num_state_vars=1; self.expected_bc_state_dim=2
-        elif self.dataset_type in ['heat_delayed_feedback', 
+        if self.dataset_type in ['heat_delayed_feedback', 
                                    'reaction_diffusion_neumann_feedback', 
                                    'heat_nonlinear_feedback_gain', 
                                    'convdiff']: # Added convdiff
@@ -164,10 +150,6 @@ class UniversalPDEDataset(Dataset):
         return out_state, bc_ctrl_tensor, {}
 
 
-# =============================================================================
-# 1. LNS Autoencoder Components
-# =============================================================================
-# ... (MLP, ConvBlock, ResConvBlock, LNS_Encoder, LNS_Decoder, LNS_Autoencoder classes - no changes needed)
 class MLP(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims, activation=nn.GELU, dropout=0.0):
         super().__init__(); layers = []; current_dim = input_dim
@@ -226,9 +208,7 @@ class LNS_Decoder(nn.Module):
         layers = []
         current_channels = initial_width_encoder * (2**(num_upsampling_blocks-1))
         
-        # Calculate the scale factor for the initial upsample to roughly match the first ConvTranspose1d input spatial size expectation
-        # This is a bit heuristic; ideal would be to ensure encoder's spatial reduction and decoder's spatial expansion are perfectly inverse.
-        # If final_latent_nx * (2**num_upsampling_blocks) is not target_nx_full, this initial upsample helps.
+
         initial_upsample_factor = (target_nx_full / (2**num_upsampling_blocks) ) / final_latent_nx
         if initial_upsample_factor > 1.0 + 1e-3: # Only add if significant upsampling is needed here
              layers.append(nn.Upsample(scale_factor=initial_upsample_factor, mode='linear', align_corners=False))
@@ -263,10 +243,7 @@ class LNS_Autoencoder(nn.Module):
         u_t_reconstructed = self.decoder(z_t)
         return u_t_reconstructed, z_t
 
-# =============================================================================
-# 2. LNS Propagator (Latent Stepper)
-# =============================================================================
-# ... (LatentStepperNet class - no changes needed)
+
 class LatentStepperNet(nn.Module):
     def __init__(self, latent_dim_c, latent_dim_x,
                  bc_ctrl_input_dim,
@@ -289,11 +266,8 @@ class LatentStepperNet(nn.Module):
         z_next_flat_pred = self.output_projection(combined_latent_features)
         z_next_pred = z_next_flat_pred.view(B, self.latent_dim_c, self.latent_dim_x)
         return z_next_pred
-# =============================================================================
-# 3. Training Functions (Autoencoder & Latent Stepper)
-# =============================================================================
-# ... (train_lns_autoencoder function - no changes needed)
-# ... (train_latent_don_stepper function - no changes needed)
+
+
 def train_lns_autoencoder(autoencoder, data_loader, train_nt_for_model,
                           lr=3e-5, num_epochs=100, device='cuda',
                           checkpoint_path='lns_ae_ckpt.pt', clip_grad_norm=1.0):
@@ -448,10 +422,7 @@ def train_latent_don_stepper(latent_stepper, encoder,
         latent_stepper.load_state_dict(ckpt['model_state_dict'])
     return latent_stepper
 
-# =============================================================================
-# 4. Validation Function for LNS-Stepper (Multi-Horizon)
-# =============================================================================
-# ... (validate_latent_don_stepper function - needs to handle new dataset types for state_keys_val)
+
 def validate_latent_don_stepper(encoder, decoder, latent_stepper,
                                 data_loader, dataset_type,
                                 train_nt_for_model_training: int, T_value_for_model_training: float,
@@ -595,9 +566,7 @@ def validate_latent_don_stepper(encoder, decoder, latent_stepper,
     print("------------------------")
 
 
-# =============================================================================
-# 5. Main Execution Block
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run LatentDON-Stepper for PDE datasets.") # Updated description
     parser.add_argument('--datatype', type=str, required=True,
@@ -620,8 +589,10 @@ if __name__ == '__main__':
     LATENT_STEPPER_BRANCH_HIDDEN = [128, 128]
     LATENT_STEPPER_TRUNK_HIDDEN = [64, 64]
     LATENT_STEPPER_COMBINED_P = 128
-    AE_LR = 3e-4; AE_EPOCHS = 100 # Default, can be overridden
-    PROP_LR = 1e-3; PROP_EPOCHS = 100 # Default, can be overridden
+    AE_LR = 3e-4
+    AE_EPOCHS = 100 
+    PROP_LR = 1e-3
+    PROP_EPOCHS = 150 
     PROP_TRAIN_ROLLOUT_STEPS = 1
     BATCH_SIZE = 32; CLIP_GRAD_NORM = 1.0
 
