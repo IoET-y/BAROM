@@ -472,7 +472,7 @@ if __name__ == '__main__':
 
     # SPFNO Hyperparameters
     SPFNO_MODES = 16; SPFNO_WIDTH = 64; SPFNO_LAYERS = 4
-    LEARNING_RATE = 1e-3; BATCH_SIZE = 32; NUM_EPOCHS = 80
+    LEARNING_RATE = 1e-3; BATCH_SIZE = 32; NUM_EPOCHS = 150
     CLIP_GRAD_NORM = 1.0
     USE_PROJECTION_FILTER = True
 
