@@ -1,8 +1,7 @@
-# latent_neural_operator_autoregressive.py
+# LNO
 # =============================================================================
-#       Latent Neural Operator (LNO) Implementation
-#       Adapted for AUTOREGRESSIVE time-dependent PDE task definition
-#       and to include BC/Control information.
+#     Latent Neural Operator (Adapted for Task1) ref:https://github.com/L-I-M-I-T/LatentNeuralOperator
+#Tian Wang and Chuang Wang. Latent Neural Operator for Solving Forward and Inverse PDE Problem. In Conference on Neural Information Processing Systems (NeurIPS), 2024
 # =============================================================================
 import os
 import numpy as np
@@ -20,8 +19,6 @@ import argparse # Added argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve
 
-# ---------------------
-# 固定随机种子
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -29,13 +26,10 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
 print(f"Latent Neural Operator (Autoregressive, BC-Ctrl Augmented) Script started at: {time.strftime('%Y-%m-%d %H:%M:%S')}")
 
-# =============================================================================
-# 0. UniversalPDEDataset (Adapted for new types)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list: raise ValueError("data_list cannot be empty")
@@ -132,9 +126,7 @@ class UniversalPDEDataset(Dataset):
         return out_state, bc_ctrl_tensor, norm_factors
 
 
-# =============================================================================
-# 1. LNO Components
-# =============================================================================
+
 class MLP(nn.Module):
     def __init__(self, input_dim, output_dim, hidden_dims, activation=nn.GELU):
         super().__init__()
@@ -188,8 +180,7 @@ class LatentNeuralOperator(nn.Module):
 
         self.trunk_projector = MLP(coord_dim, D_embedding, projector_hidden_dims)
         
-        # Branch projector input: (pos_in_coords, val_in_state_vars, val_in_bc_ctrl_features)
-        # Dimension: coord_dim + (num_state_vars + total_bc_ctrl_dim)
+
         branch_val_input_dim = num_state_vars + total_bc_ctrl_dim
         self.branch_projector_input_dim = coord_dim + branch_val_input_dim
         self.branch_projector = MLP(self.branch_projector_input_dim, D_embedding, projector_hidden_dims)
@@ -212,22 +203,16 @@ class LatentNeuralOperator(nn.Module):
         self.domain_L = None
 
     def forward(self, pos_in, val_in, pos_out, bc_ctrl_at_current_step): # Added bc_ctrl_at_current_step
-        # pos_in: [B, N_points, coord_dim (e.g., 2 for x, pseudo_t_in)]
-        # val_in: [B, N_points, num_state_vars] (U_k at these points)
-        # pos_out: [B, N_points, coord_dim (e.g., 2 for x, pseudo_t_out)]
-        # bc_ctrl_at_current_step: [B, total_bc_ctrl_dim]
+
         
         B, N_points, _ = pos_in.shape
 
-        # Spatially expand bc_ctrl_at_current_step to match N_points
         bc_ctrl_expanded = bc_ctrl_at_current_step.unsqueeze(1).repeat(1, N_points, 1) # [B, N_points, total_bc_ctrl_dim]
         
-        # Augment val_in with spatially expanded bc_ctrl features
         val_in_augmented = torch.cat([val_in, bc_ctrl_expanded], dim=-1) # [B, N_points, num_state_vars + total_bc_ctrl_dim]
 
         X_hat = self.trunk_projector(pos_in) # [B, N_points, D_embedding]
 
-        # Branch input now includes augmented val_in
         branch_input_concat = torch.cat([pos_in, val_in_augmented], dim=-1) # [B, N_points, coord_dim + num_state_vars + total_bc_ctrl_dim]
         Y_hat = self.branch_projector(branch_input_concat) # [B, N_points, D_embedding]
 
@@ -241,9 +226,6 @@ class LatentNeuralOperator(nn.Module):
         val_out = val_in + val_out_raw 
         return val_out
 
-# =============================================================================
-# 2. Training Function for LNO (Autoregressive Time-Stepper)
-# =============================================================================
 def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_model,
                              lr=1e-3, num_epochs=100, device='cuda',
                              checkpoint_path='lno_ar_checkpoint.pt', clip_grad_norm=1.0):
@@ -366,9 +348,7 @@ def train_lno_autoregressive(model, data_loader, dataset_type, train_nt_for_mode
         model.load_state_dict(ckpt['model_state_dict'])
     return model
 
-# =============================================================================
-# 3. Validation Function for LNO (Autoregressive Multi-Horizon)
-# =============================================================================
+
 def validate_lno_autoregressive(model, data_loader, dataset_type,
                                 train_nt_for_model_training: int,
                                 T_value_for_model_training: float,
@@ -399,7 +379,6 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
     test_horizons_T_values = sorted(list(set(h for h in test_horizons_T_values if h <= full_T_in_datafile + 1e-6 and h > 0)))
 
     print(f"LNO_AR Validation for T_horizons: {test_horizons_T_values}")
-    # ... (other print statements)
 
     results_at_T_train = {key: {'mse':[],'rmse':[],'relative_error':[],'max_error':[]} for key in state_keys_val}
     overall_rel_err_at_T_train = []
@@ -436,7 +415,6 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
 
 
         norm_factors_sample = {}
-        # ... (norm_factors_sample extraction - no changes needed)
         for key_nf, val_tensor_nf in norm_factors_batch.items():
             if isinstance(val_tensor_nf, torch.Tensor) and val_tensor_nf.ndim > 0 and val_tensor_nf.shape[0] == 1:
                  norm_factors_sample[key_nf] = val_tensor_nf[0].cpu().numpy() if val_tensor_nf.is_cuda else val_tensor_nf[0].numpy()
@@ -448,7 +426,6 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
 
         current_u_norm = gt_state_seq_norm_full[0, :, :].unsqueeze(0) # [1, nx, num_vars]
         
-        # Determine max rollout based on the longest T_horizon and current sample's length
         max_T_rollout = max(test_horizons_T_values) if test_horizons_T_values else 0
         max_nt_rollout = int((max_T_rollout / full_T_in_datafile) * (current_sample_full_nt_val - 1)) + 1
         max_nt_rollout = min(max_nt_rollout, current_sample_full_nt_val)
@@ -567,9 +544,7 @@ def validate_lno_autoregressive(model, data_loader, dataset_type,
         print(f"  Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_at_T_train):.4e}")
     print("--------------------------------------")
 
-# =============================================================================
-# 4. Main Execution Block
-# =============================================================================
+#  main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run Autoregressive LNO for PDE datasets.")
     parser.add_argument('--datatype', type=str, required=True,
@@ -596,7 +571,7 @@ if __name__ == '__main__':
     FINAL_MLP_HIDDEN_DIMS = [128, 64]
     LEARNING_RATE = 3e-4
     BATCH_SIZE = 32
-    NUM_EPOCHS = 100
+    NUM_EPOCHS = 150
     CLIP_GRAD_NORM = 1.0
     COORD_DIM_LNO = 2 # (x_spatial, pseudo_t)
 
@@ -606,36 +581,8 @@ if __name__ == '__main__':
     main_num_state_vars = 0
     FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 300 # MUST MATCH GENERATION
     TRAIN_T_TARGET = 1.5    
-    if DATASET_TYPE == 'advection':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/advection_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['U']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T_file':FULL_T_IN_DATAFILE, 'nt_file':FULL_NT_IN_DATAFILE}
-    elif DATASET_TYPE == 'euler':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/euler_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['rho','u']; main_num_state_vars=2
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T_file':FULL_T_IN_DATAFILE, 'nt_file':FULL_NT_IN_DATAFILE}
-    elif DATASET_TYPE == 'burgers':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/burgers_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['U']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T_file':FULL_T_IN_DATAFILE, 'nt_file':FULL_NT_IN_DATAFILE}
-    elif DATASET_TYPE == 'darcy':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/darcy_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['P']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T_file':FULL_T_IN_DATAFILE, 'nt_file':FULL_NT_IN_DATAFILE}
-    elif DATASET_TYPE == 'heat_delayed_feedback':
 
-        dataset_path = "./datasets_new_feedback/heat_delayed_feedback_v1_5000s_64nx_300nt.pkl" # UPDATE
-        main_state_keys=['U']; main_num_state_vars=1
-        dataset_params_for_plot={'nx':64,'ny':1,'L':1.0,'T_file':FULL_T_IN_DATAFILE, 'nt_file':FULL_NT_IN_DATAFILE}
-    elif DATASET_TYPE == 'reaction_diffusion_neumann_feedback':
+    if DATASET_TYPE == 'reaction_diffusion_neumann_feedback':
 
         dataset_path = "./datasets_new_feedback/reaction_diffusion_neumann_feedback_v1_5000s_64nx_300nt.pkl" # UPDATE
         main_state_keys=['U']; main_num_state_vars=1
