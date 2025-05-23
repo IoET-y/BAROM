@@ -1,6 +1,6 @@
 # LNS_AE
 # =============================================================================
-# latent deepOnet (Adapted for Task1) ref:https://github.com/katiana22/latent-deeponet
+# latent deepOnet (Adapted for Task2) ref:https://github.com/katiana22/latent-deeponet
 # Learning nonlinear operators in latent spaces for real-time predictions of complex dynamics in physical systems.Nature Communications,2024
 # =============================================================================
 import os
