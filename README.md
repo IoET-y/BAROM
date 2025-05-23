@@ -1,256 +1,75 @@
-# Latent Space Learning for PDE Systems with Complex Boundary (BAROM)
+# Latent Space Learning for PDE Systems with Complex Boundary
 
-## 📜 Abstract
-Latent space Reduced Order Models (ROMs) in Scientific Machine Learning (SciML) can enhance and accelerate Partial Differential Equation (PDE) simulations. However, they often struggle with complex boundary conditions (BCs) such as time-varying, nonlinear, or state-dependent ones. Current methods for handling BCs in latent space have limitations due to **representation mismatch and projection difficulty**, impacting predictive accuracy and physical consistency. To address this, we introduce BAROM (Boundary-Aware Attention ROM). BAROM integrates: (1) explicit, Reduced Basis Methods-inspired boundary treatment using a modified ansatz and a learnable lifting network for complex BCs; and (2) a non-intrusive, attention-based mechanism, inspired by Galerkin Neural Operators, to learn internal field dynamics within a POD-initialized latent space. Evaluations show BAROM achieves superior accuracy and robustness on benchmark PDEs with diverse complex BCs compared to established SciML approaches.
-*(Abstract from the NeurIPS 2025 submission "Latent Space Learning for PDE Systems with Complex Boundary")*
+## Overview
 
----
+This repository contains the official PyTorch implementation for the NeurIPS 2025 submission:
+**"Latent Space Learning for PDE Systems with Complex Boundary"**.
 
-## 📖 Overview
-This repository contains the source code, datasets, and experimental setup for the Boundary-Aware Attention Reduced Order Model (BAROM), as presented in the paper "Latent Space Learning for PDE Systems with Complex Boundary" (NeurIPS 2025 submission). BAROM is a novel SciML framework designed for accurate and efficient simulation of PDE systems, particularly those featuring complex, dynamic, and feedback-dependent boundary conditions (BCs).
 
-The core challenges addressed are the **representation mismatch** and **projection difficulty** when handling complex BCs in traditional latent space models. BAROM tackles these by:
-* Employing an explicit boundary-internal field decomposition ($U = U_B + U_I$) inspired by Reduced Basis Methods (RBM).
-* Introducing a **learnable lifting network** ($\mathcal{L}_{\text{lift}}$) to dynamically generate the boundary-conforming field $U_B$ from time-dependent boundary parameters $P_{BC}(t)$.
-* Developing a **Boundary-Aware Attention (BAA)** mechanism for the non-intrusive evolution of latent coefficients $\mathbf{a}(t)$ representing the internal field $U_I = \bm{\Phi}\mathbf{a}(t)$. This evolution is explicitly conditioned on boundary parameters.
 
-Two main variants of BAROM are explored in this work:
-* **BAROM\_ImpBC** (Implicit Boundary Condition Handling): Implemented in `PDE_category1/BAROM_ImpBC.py` [cite: 14] and `PDE_category2/BAROM_ImpBC.py`[cite: 30]. The influence of boundary conditions on the latent dynamics is primarily learned implicitly by the attention and FFN components.
-* **BAROM\_ExpBC** (Explicit Boundary Condition Handling): This is the primary model detailed in the NeurIPS paper, implemented in `PDE_category2/BAROM_ExpBC.py`[cite: 30]. It explicitly processes boundary parameters $P_{BC}(t_{k+1})$ to directly inform the update of latent coefficients $\mathbf{a}(t_{k+1})$. This version is particularly designed to align with the theoretical underpinnings of explicit boundary treatment as discussed in the context of Abbasi et al. (2020)[cite: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153].
 
----
+## Key Features
 
-## ⚙️ The BAROM Framework (BAROM_ExpBC - Aligned with Abbasi et al. (2020))
+* Implementation of **BAROM (Boundary-Aware Attention ROM)**, including two variants:
+    * `BAROM_ImpBC`: Implicit Boundary Condition handling.
+    * `BAROM_ExpBC`: Explicit Boundary Condition handling in the latent dynamics.
+* Explicit boundary treatment via a learnable lifting network ($\mathcal{L}_{\text{lift}}$).
+* Non-intrusive, attention-based mechanism ($\mathcal{F}_{\text{latent}}$) for learning internal field dynamics.
+* Handles two categories of complex boundary conditions:
+    1.  Externally prescribed complex BCs (Category 1).
+    2.  Complex BCs with internal-boundary coupling and external controls (Category 2).
+* Code for reproducing experiments on benchmark PDE systems from the paper.
+* Implementations of baseline models for comprehensive comparison: FNO, SPFNO, BENO, LNS-AE, LNO, POD-DL-ROM, DON, OPNO.
 
-The primary BAROM model, **BAROM\_ExpBC**, is designed for robust handling of complex boundary conditions, including those with internal-boundary coupling and external controls (Category Two problems as defined in the NeurIPS paper, Section 2). Its architecture and learning strategy are detailed in Section 3 of the NeurIPS paper.
-
-### Core Principles
-1.  **Explicit Decomposition (Ansatz):**
-    The solution $\hat{U}$ is decomposed as:
-    $\hat{U}(x,t;\mu) = U_B(x,t; P_{BC}(t), \mu) + U_I(x,t;\mu)$
-    (Eq. \ref{eq:barom_ansatz_methodology} in the NeurIPS paper)
-    This separates the solution into a boundary field $U_B$ (satisfying non-homogeneous BCs) and an internal field $U_I$ (satisfying corresponding homogeneous BCs).
-
-2.  **Learnable Lifting Network ($\mathcal{L}_{\text{lift}}$):**
-    The boundary field $U_B$ is generated by the `UniversalLifting` class (see `PDE_category2/BAROM_ExpBC.py` [cite: 30]):
-    $U_B(x,t; P_{BC}(t), \mu) = \mathcal{L}_{\text{lift}}(P_{BC}(t), \mu; \Theta_{\mathcal{L}_{\text{lift}}})(x)$
-    (Eq. \ref{eq:lifting_network_methodology} in the NeurIPS paper)
-    $P_{BC}(t)$ encapsulates time-dependent boundary parameters, including external signals and feedback terms.
-
-3.  **Internal Field ($U_I$) Representation:**
-    $U_I(x,t;\mu) \approx \bm{\Phi}(x) \mathbf{a}(t;\mu)$
-    where $\bm{\Phi}(x)$ are learnable, POD-initialized basis functions (parameter `model.Phi`) and $\mathbf{a}(t)$ are latent coefficients.
-    (Eq. \ref{eq:barom_internal_field_methodology} in the NeurIPS paper)
-
-4.  **Latent Dynamics Evolution ($\mathcal{F}_{\text{latent}}$) for BAROM\_ExpBC:**
-    The evolution of latent coefficients $\mathbf{a}(t_k) \rightarrow \mathbf{a}(t_{k+1})$ is governed by:
-    $\mathbf{a}(t_{k+1}) = \mathbf{a}(t_k) + \Delta\mathbf{a}_{\text{attn}} + \Delta\mathbf{a}_{\text{ffn}} + \Delta\mathbf{a}_{\text{bc}}$
-    (Eq. \ref{eq:latent_update_components} in the NeurIPS paper)
-
-    The crucial term for explicit boundary handling in the latent space is $\Delta\mathbf{a}_{\text{bc}}$. This term is computed by processing the boundary parameters $P_{BC}(t_{k+1})$ through dedicated neural network modules: `bc_feature_processor` and `bc_to_a_update` within the `MultiVarAttentionROMEq9` class in `PDE_category2/BAROM_ExpBC.py`[cite: 30].
-
-### Alignment with Abbasi et al. (2020) "Error estimation in reduced basis method..."
-
-The design of **BAROM\_ExpBC** draws inspiration from the explicit boundary treatment method for Reduced Basis Methods (RBM) presented by Abbasi et al. (2020)[cite: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153].
-
-* **Modified Ansatz:** Both Abbasi et al. [cite: 150, 151, 152] (Eq. 7a-7c) and BAROM (Eq. \ref{eq:barom_ansatz_methodology}) use a modified ansatz that decomposes the solution $\hat{U}$ into a boundary term $U_B$ (handling non-homogeneous BCs) and an internal field $U_I$ (approximated by basis functions satisfying homogeneous BCs). This explicit separation is fundamental.
-* **Explicit BC Incorporation in Latent Dynamics:**
-    * Abbasi et al. (2020) derive a reduced-order model (Eq. 9 in their paper) via Galerkin projection, where the evolution equation for the latent coefficients $\mathbf{a}^n$ explicitly includes terms derived from the boundary conditions $\hat{U}_{BC}^n$ and control inputs $u_c^n$ (e.g., their term $\mathbf{F}_N(\hat{U}_{BC}^n, u_c^n, \mu)$)[cite: 148, 149, 150]. This makes the latent dynamics directly responsive to boundary changes.
-    * **BAROM\_ExpBC achieves this explicit boundary-awareness in a data-driven, non-intrusive manner.** Instead of an intrusive Galerkin projection to derive explicit forcing terms from $U_B$ in the latent space ODE, BAROM\_ExpBC *learns* the corrective influence of the boundary parameters $P_{BC}(t_{k+1})$ on the latent coefficients.
-    * The $\Delta\mathbf{a}_{\text{bc}}$ term in BAROM\_ExpBC's latent update (Eq. \ref{eq:latent_update_components}) is computed by processing $P_{BC}(t_{k+1})$ (which includes boundary state values and external controls, analogous to $\hat{U}_{BC}^n$ and $u_c^n$ in Abbasi et al.) through the `bc_feature_processor` and `bc_to_a_update` neural networks. This term directly modulates the evolution of $\mathbf{a}(t)$, ensuring that the internal field $U_I$ is dynamically consistent with the boundary field $U_B$ determined by $P_{BC}(t_{k+1})$.
-    * Therefore, BAROM\_ExpBC's $\Delta\mathbf{a}_{\text{bc}}$ serves a conceptually analogous role to the explicit boundary forcing terms (like $\mathbf{F}_N$) in Abbasi et al.'s RBM formulation (Eq. 9)[cite: 148, 149, 150]. It ensures that the latent dynamics are not merely evolving an internal field oblivious to boundary changes but are actively and explicitly conditioned by them at each step.
-* **Non-Intrusive Learning:** BAROM\_ExpBC's SciML approach offers flexibility by learning these complex boundary-internal interactions non-intrusively, which can be advantageous for highly complex or nonlinear systems where deriving analytical Galerkin projections might be challenging.
-
-In essence, BAROM\_ExpBC translates the principle of explicit boundary treatment from projection-based RBMs (as in Abbasi et al. (2020) [cite: 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24, 25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41, 42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75, 76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92, 93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 103, 104, 105, 106, 107, 108, 109, 110, 111, 112, 113, 114, 115, 116, 117, 118, 119, 120, 121, 122, 123, 124, 125, 126, 127, 128, 129, 130, 131, 132, 133, 134, 135, 136, 137, 138, 139, 140, 141, 142, 143, 144, 145, 146, 147, 148, 149, 150, 151, 152, 153]) into a learnable, attention-based framework, aligning well with the objective of handling complex, dynamic boundary conditions effectively.
-
----
-
-## 🏗️ Model Architecture
-The BAROM architecture (conceptually illustrated in Figure 1 of the NeurIPS paper) integrates:
-1.  An initialization step to compute $\mathbf{a}(0)$.
-2.  The **Lifting Network** ($\mathcal{L}_{\text{lift}}$ in `UniversalLifting` class) computing $U_B(t)$ from $P_{BC}(t)$.
-3.  The **Boundary-Aware Attention (BAA) module** ($\mathcal{F}_{\text{latent}}$ in `MultiVarAttentionROMEq9` or `MultiVarAttentionROM` classes [cite: 14, 30]) iteratively predicting $\mathbf{a}(t+\Delta t)$.
-4.  Reconstruction of the full field $\hat{U}(x,t)$.
-5.  For Category Two problems (with internal-boundary feedback), an explicit feedback processing module ($G_{\text{fbc}}$) is conceptually part of the $P_{BC}(t)$ generation and its processing by $\mathcal{L}_{\text{lift}}$ and $\mathcal{F}_{\text{latent}}$.
-
-(See Section 3 of the NeurIPS paper for a detailed architectural overview and Algorithm 1 for the predictive step.)
-
----
-
-## 💾 Dataset Generation
-Datasets for this project are synthetically generated for two categories of PDE systems:
-1.  **Category One:** PDEs with externally prescribed complex BCs (e.g., Advection, Euler, Burgers, Darcy flow). These are generated by `PDE_category1/PC1_datageneration/generate_datasets_PDE_task1.py`[cite: 20].
-2.  **Category Two:** PDEs with complex BCs involving internal-boundary coupling and/or external controls (e.g., Reaction-Diffusion with Neumann Feedback, Heat equation with Non-linear Gain feedback, Convection-Diffusion with Integral Boundary Control). These are generated by `PDE_category2/generate_datasets_PDE_task2.py`[cite: 43].
-
-Detailed descriptions of the PDE systems, boundary condition formulations, and parameterizations can be found in Appendix A of the NeurIPS paper.
-The generation scripts typically output `.pkl` files containing solution snapshots $U(x,t)$, boundary state information `BC_State`, and control signals `BC_Control`.
-
----
-
-## 🧪 Experimental Setup
-BAROM's performance is evaluated against several state-of-the-art SciML baselines as detailed in Section 4 of the NeurIPS paper. These include:
-* Fourier Neural Operator (FNO) [cite: 17, 35]
-* Spatially-Projected FNO (SPFNO) [cite: 21, 38]
-* Boundary‐Encoded Neural Operator (BENO) [cite: 15, 31]
-* Latent Neural Solver with Autoencoder (LNS-AE) [cite: 19, 37]
-* Latent Neural Operator (LNO) [cite: 18, 36]
-* POD‐DeepLearning‐ROM (POD-DL-ROM) [cite: 23, 38]
-
-Implementations for these baselines (adapted for the specific tasks) are available in the `PDE_category1` and `PDE_category2` directories.
-
-**Evaluation Metrics:**
-Model performance is assessed using:
-* Mean Squared Error (MSE)
-* Relative $L_2$ Error (RelErr)
-* Maximum Absolute Error (MaxErr)
-(Definitions are provided in Section 4 of the NeurIPS paper)
-
----
-
-## 📊 Results
-BAROM demonstrates superior accuracy, robustness, and long-term prediction capabilities compared to baseline models, especially for challenging feedback-controlled systems.
-* **PDEs without Internal Feedback (Category One):** BAROM\_ImpBC shows strong performance and stability, particularly in extrapolation tasks (Table 1, NeurIPS paper).
-* **PDEs with Internal Feedback (Category Two):** BAROM\_ExpBC significantly outperforms baselines across all datasets and time horizons, often by orders of magnitude in MSE (Tables 2, 3, 4, 5 in NeurIPS paper).
-
-**Ablation Studies** (Section 4.3, Figure 2, NeurIPS paper; `Ablation_study` directory [cite: 9, 10, 11, 12, 13]):
-These studies validate the key architectural components of BAROM, including:
-* The efficacy of the learnable lifting network ($\mathcal{L}_{\text{lift}}$).
-* The impact of explicit boundary condition information ($\Delta\mathbf{a}_{\text{bc}}$) in the latent dynamics model.
-* The role of the attention mechanism (BAA).
-
----
-
-## 📁 Code Structure
-
-BAROM-main/
-├── Ablation_study/               # Scripts and results for ablation studies
-│   ├── BAROM_Non_attention.py
-│   ├── BAROM_Random_pod_initialize.py
-│   ├── BAROM_fixedlifting.py
-│   ├── BAROM_pod_dim_ablation.py
-│   ├── Benchmarking_Noatten_BAROM.py
-│   ├── benchmarking.py
-│   ├── ablation.md                 # Commands and aggregated results
-│   └── datasets_new_feedback/    # Datasets for ablation (can link to PDE_category2)
-├── PDE_category1/                # Models and data for PDEs with externally prescribed BCs
-│   ├── BAROM_ImpBC.py
-│   ├── BENO.py
-│   ├── FNO.py
-│   ├── LNO.py
-│   ├── LNS_AE.py
-│   ├── POD_DL_ROM.py
-│   ├── SPFNO.py
-│   ├── Benchmarking.py
-│   ├── PC1_datageneration/
-│   │   ├── generate_datasets_PDE_task1.py
-│   │   └── command.md
-│   ├── command_line.md
-│   └── datasets_full/            # Storage for generated Category 1 datasets
-├── PDE_category2/                # Models and data for PDEs with internal-boundary coupled BCs
-│   ├── BAROM_ExpBC.py            # Primary model aligned with Abbasi et al. (2020) Eq. 9
-│   ├── BAROM_ImpBC.py
-│   ├── (Baseline model scripts similar to PDE_category1)
-│   ├── Benchmarking.py
-│   ├── BenchmarkingEBCBAROM-*.py # Specific benchmarking scripts for BAROM_ExpBC
-│   ├── generate_datasets_PDE_task2.py
-│   ├── command_line.md
-│   ├── datasetscript.md
-│   └── datasets_new_feedback/    # Storage for generated Category 2 datasets
+## Repository Structure
+```text
+BAROM/
 ├── README.md                     # This file
+├── PDE_category1/                # Experiments for PDEs with externally prescribed BCs (No Internal Feedback)
+│   ├── PC1_datageneration/       # Scripts to generate datasets for Category 1 PDEs
+│   │   ├── generate_datasets_PDE_task1.py
+│   │   ├── data_visualization.ipynb
+│   │   └── command.md            # Instructions for data generation
+│   ├── datasets_full/            # Information about Category 1 datasets (dataset.md)
+│   ├── BAROM_ImpBC.py            # BAROM model for Category 1
+│   ├── FNO.py
+│   ├── SPFNO.py
+│   ├── BENO.py
+│   ├── LNS_AE.py
+│   ├── LNO.py
+│   ├── POD_DL_ROM.py
+│   ├── DON.py
+│   ├── OPNO.py
+│   └── Benchmarking.py           # Script to run benchmarks for Category 1
+│   └── command_line.md           # Instructions for running experiments
+├── PDE_category2/                # Experiments for PDEs with internal-boundary coupling & control
+│   ├── generate_datasets_PDE_task2.py # Script to generate datasets for Category 2 PDEs
+│   ├── datasets_new_feedback/    # Information about Category 2 datasets (dataset.md)
+│   ├── data_visualization.ipynb
+│   ├── datasetscript.md          # Details on dataset generation
+│   ├── BAROM_ExpBC.py            # BAROM model (explicit BC handling) for Category 2
+│   ├── BAROM_ImpBC.py            # BAROM model (implicit BC handling) for Category 2
+│   ├── FNO.py
+│   ├── SPFNO.py             
+│   ├── BENO.py
+│   ├── LNS_AE.py
+│   ├── LNO.py
+│   ├── POD_DL_ROM.py
+│   ├── BenchmarkingEBCBAROM-CDF.py # Benchmarking scripts for specific datasets (Convdiff)
+│   ├── BenchmarkingEBCBAROM-hdl.py # (Heat_NF)
+│   ├── BenchmarkingEBCBAROM-RF.py  # (RDFNF)
+│   ├── Benchmarking.py           # General benchmarking script for Category 2
+│   ├── PerformanceOnGPU.py       # Script for GPU performance metrics
+│   └── command_line.md           # Instructions for running experiments
+└── Ablation_study/               # Scripts and data for ablation studies (on RDFNF dataset)
+├── datasets_new_feedback/    # Information about dataset used for ablation
+├── BAROM_pod_dim_ablation.py # Ablation on latent dimension
+├── BAROM_fixedlifting.py     # Ablation on lifting network (learnable vs. fixed)
+├── BAROM_Random_pod_initialize.py # Ablation on basis initialization
+├── BAROM_Non_attention.py    # Ablation on attention mechanism (BAA vs. NoAttn)
+├── Benchmarking_Noatten_BAROM.py # Supporting benchmark script for NoAttn
+├── benchmarking.py           # General benchmarking script for ablation
+└── ablation.md               # Details and commands for ablation studies
+```
 
----
 
-## 🚀 Running the Code
-
-### 1. Dataset Generation (Optional)
-Pre-generated datasets (as `.pkl` files) are expected in the respective `datasets_full/` (for Category 1) and `datasets_new_feedback/` (for Category 2 and Ablations) directories.
-If you need to regenerate them:
-* **Category 1 Datasets:**
-    ```bash
-    cd PDE_category1/PC1_datageneration/
-    python generate_datasets_PDE_task1.py --datatype [advection|euler|burgers|darcy] --num_samples <N> --nx <NX> --nt <NT> --T <TIME_HORIZON> --output_dir ../datasets_full
-    cd ../..
-    ```
-    (Refer to `PDE_category1/PC1_datageneration/command.md` [cite: 18] for specific examples used in the paper.)
-* **Category 2 Datasets:**
-    ```bash
-    cd PDE_category2/
-    python generate_datasets_PDE_task2.py --dataset_type [heat_delayed_feedback|reaction_diffusion_neumann_feedback|heat_nonlinear_feedback_gain|convdiff] --num_samples <N> --nx <NX> --nt <NT> --T <TIME_HORIZON> --output_dir ./datasets_new_feedback
-    cd ..
-    ```
-    (Refer to `PDE_category2/datasetscript.md` [cite: 42] for specific examples.)
-
-Ensure output paths align with where training/benchmarking scripts expect data.
-
-### 2. Training BAROM Models
-The primary training scripts are `BAROM_ExpBC.py` (for Category 2 PDEs) and `BAROM_ImpBC.py` (for Category 1 or as a baseline).
-Hyperparameters are detailed in Appendix I of the NeurIPS paper.
-
-* **Example: Training BAROM\_ExpBC (Equation 9 Aligned Model for Category 2)**
-    ```bash
-    python PDE_category2/BAROM_ExpBC.py \
-        --datatype heat_nonlinear_feedback_gain \
-        --basis_dim 32 \
-        --d_model 512 \
-        --num_heads 8 \
-        --bc_processed_dim 64 \
-        --hidden_bc_processor_dim 128 \
-        --epochs 150 \
-        --lr 5e-4 \
-        --batch_size 32 \
-        # ... other relevant hyperparameters from Appendix I
-    ```
-* **Example: Training BAROM\_ImpBC (for Category 1)**
-    ```bash
-    python PDE_category1/BAROM_ImpBC.py \
-        --datatype advection \
-        --basis_dim 32 \
-        --d_model 512 \
-        --num_heads 8 \
-        --epochs 150 \
-        --lr 1e-4 \
-        --batch_size 32 \
-        # ... other relevant hyperparameters
-    ```
-    (Refer to `PDE_category1/command_line.md` [cite: 22] and `PDE_category2/command_line.md` [cite: 39] for more training command examples.)
-
-### 3. Running Baseline Models
-Training scripts for baseline models (FNO, SPFNO, BENO, LNO, LNS-AE, POD-DL-ROM) are provided in the `PDE_category1/` and `PDE_category2/` directories. Execute them similarly, adjusting hyperparameters as needed (see Appendix I and E of the NeurIPS paper for baseline details).
-
-### 4. Benchmarking
-Benchmarking scripts (`Benchmarking.py` [cite: 16, 31] or specialized ones like `BenchmarkingEBCBAROM-*.py` [cite: 32, 33, 34]) load trained model checkpoints and evaluate them on test datasets.
-* **Example for Category 2 (including BAROM\_ExpBC):**
-    ```bash
-    python PDE_category2/Benchmarking.py \
-        --datasets heat_nonlinear_feedback_gain reaction_diffusion_neumann_feedback convdiff \
-        --models BAROM_ExpBC_Eq9 SPFNO LNO POD_DL_ROM BENO LNS_AE # BAROM_ImpBC_Ablation_equiv
-        # Ensure 'BAROM_ExpBC_Eq9' is a defined key in the script's MODEL_CONFIGS 
-        # pointing to your trained BAROM_ExpBC checkpoint.
-    ```
-    (Refer to the `command_line.md` files in respective directories for benchmark execution examples.)
-
-### 5. Ablation Studies
-Scripts for ablation studies are in `Ablation_study/`.
-1.  Train ablation model variants (e.g., `BAROM_Non_attention.py`[cite: 9], `BAROM_fixedlifting.py` [cite: 10]).
-2.  Run corresponding benchmarking scripts (e.g., `Benchmarking_Noatten_BAROM.py`[cite: 10], `benchmarking.py` [cite: 12]).
-    (Commands and aggregated results are often found in `Ablation_study/ablation.md`[cite: 11].)
-
----
-
-## 🛠️ Dependencies
-* Python (3.8+ recommended)
-* PyTorch (e.g., 1.8+ or newer, refer to script imports)
-* NumPy
-* Matplotlib
-* SciPy (for some data generation/processing aspects)
-* Pickle
-* Argparse
-* Glob
-
-It is highly recommended to use a Python virtual environment (e.g., conda or venv).
-```bash
-# Example using conda
-conda create -n barom_env python=3.9
-conda activate barom_env
-# Install PyTorch according to your CUDA version from [https://pytorch.org/](https://pytorch.org/)
-pip install numpy matplotlib scipy argparse
