@@ -1,7 +1,9 @@
+# FNO
+# =============================================================================
+#   FNO (Adapted for Task1) ref:https://github.com/neuraloperator/neuraloperator
+# Zongyi Li, et al. Fourier neural operator for parametric partial differen-371tial equations. ICLR 2021
+# =============================================================================
 import torch.fft
-# =============================================================================
-#     COMPLETE CODE: FNO Baseline Adapted for Task
-# =============================================================================
 import os
 import numpy as np
 import torch
@@ -17,8 +19,8 @@ import time
 import pickle
 import argparse # Added to allow command-line dataset type selection
 
-# ---------------------
-# 固定随机种子
+# fixed seed
+
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -26,19 +28,14 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-
-# =============================================================================
-# 2. 通用化数据集定义 (WITH train_nt_limit)
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
         通用化数据集类，适配 Advection, Euler, Burgers, Darcy。
 
         Args:
-            data_list: 包含样本字典的列表。
+            data_list: 。
             dataset_type: 'advection', 'euler', 'burgers', 或 'darcy'。
             train_nt_limit: If specified, truncate sequences to this length.
         """
@@ -51,7 +48,6 @@ class UniversalPDEDataset(Dataset):
         first_sample = data_list[0]
         params = first_sample.get('params', {})
 
-        # --- 获取样本中的原始nt, nx, ny ---
         self.nt_from_sample_file = 0 # Full length in the file for this sample
         self.nx_from_sample_file = 0
         self.ny_from_sample_file = 1 # Default for 1D
@@ -140,7 +136,6 @@ class UniversalPDEDataset(Dataset):
             norm_factors[f'{key}_mean'] = state_mean
             norm_factors[f'{key}_std'] = state_std
 
-        # --- BC State ---
         bc_state_seq_full = sample[self.bc_state_key]
         bc_state_seq = bc_state_seq_full[:current_nt_for_item, :] # Truncate
 
@@ -164,7 +159,6 @@ class UniversalPDEDataset(Dataset):
                 # norm_factors[f'{self.bc_state_key}_stds'][k_dim] remains 1.0
         bc_state_tensor_norm = torch.tensor(bc_state_norm).float()
 
-        # --- BC Control ---
         if self.num_controls > 0:
             try:
                 bc_control_seq_full = sample[self.bc_control_key]
@@ -207,9 +201,7 @@ class UniversalPDEDataset(Dataset):
 
         return output_state_tensors, bc_ctrl_tensor_norm, norm_factors
 
-# =============================================================================
-# FNO Components (Helper Classes)
-# =============================================================================
+
 class SpectralConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1):
         super(SpectralConv1d, self).__init__()
@@ -268,9 +260,7 @@ class FNO1d(nn.Module):
         x_out = self.fc2(x_out) # [B, N, C_out] (C_out is output_channels, i.e. num_state_vars)
         return x_out
 
-# =============================================================================
-# FNO Training Function (One-Step Prediction Loss, adapted for TRAIN_NT_FOR_MODEL)
-# =============================================================================
+
 def train_fno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Added train_nt_for_model
                       lr=1e-3, num_epochs=50, device='cuda',
                       checkpoint_path='fno_checkpoint.pt', clip_grad_norm=1.0):
@@ -373,9 +363,7 @@ def train_fno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Ad
         model.load_state_dict(checkpoint['model_state_dict'])
     return model
 
-# =============================================================================
-# FNO Validation Function (Autoregressive Rollout for Multiple Horizons)
-# =============================================================================
+
 def validate_fno_stepper(model, data_loader, dataset_type,
                          # Prefix for figure paths
                          # Parameters for defining horizons and data structure:
@@ -431,11 +419,7 @@ def validate_fno_stepper(model, data_loader, dataset_type,
         nt_file_check, nx_or_N_file_check, num_vars_check = state_seq_true_norm_full.shape
         if nt_file_check != full_nt_in_datafile:
             print(f"Warning: nt from val_loader ({nt_file_check}) != expected full_nt_in_datafile ({full_nt_in_datafile}). Adjusting.")
-            # This can happen if the last batch of data_list was smaller than train_nt_limit during UniversalPDEDataset init for val_dataset
-            # For safety, use the actual loaded full_nt for this sample.
-            # However, UniversalPDEDataset with train_nt_limit=None should always return full length from file.
-            # This warning might indicate an issue in UniversalPDEDataset's handling of train_nt_limit=None
-            # OR that full_nt_in_datafile param passed here is not matching the actual file content.
+
 
         # Extract norm_factors for this single sample (index 0 of the batch)
         norm_factors_sample = {}
@@ -599,9 +583,7 @@ def validate_fno_stepper(model, data_loader, dataset_type,
         print(f"  Overall Avg Trajectory Relative Error @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.4e}")
     print("------------------------")
 
-# =============================================================================
-# Main Block - Modified to Run FNO Baseline with Task Definition
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run FNO baseline for PDE datasets.") # Added argparse
     parser.add_argument('--datatype', type=str, required=True,
@@ -620,7 +602,6 @@ if __name__ == '__main__':
     print(f"Selected Dataset Type: {DATASET_TYPE.upper()}")
     print(f"Selected Model Type: {MODEL_TYPE.upper()}")
 
-    # --- Key Time Parameters (MUST MATCH YOUR generate_dataset.py CALLS) ---
     FULL_T_IN_DATAFILE = 2.0  # T value your .pkl files were generated with
     FULL_NT_IN_DATAFILE = 600 # nt value (number of points) your .pkl files were generated with
 
@@ -630,46 +611,17 @@ if __name__ == '__main__':
     print(f"Datafile T={FULL_T_IN_DATAFILE}, nt={FULL_NT_IN_DATAFILE}")
     print(f"Training with T={TRAIN_T_TARGET}, nt={TRAIN_NT_FOR_MODEL}")
 
-    # --- FNO Specific Hyperparameters ---
     fno_modes = 16
     fno_width = 64
     fno_layers = 4
     learning_rate = 1e-3 # FNO can often use higher LR
     batch_size = 32
-    num_epochs = 80 # Adjust as needed
+    num_epochs = 150 # Adjust as needed
     clip_grad_norm = 1.0
 
-    # --- Dataset Paths and Parameters (update paths to your ../datasets_full) ---
     dataset_params_for_plot = {} # To store L, nx, ny for plotting in validation
 
-    if DATASET_TYPE == 'advection':
-        dataset_path = "./datasets_full/advection_data_10000s_128nx_600nt.pkl"
-        # From generate_dataset call: nx=128, nt=600, T=2.0, L=1.0 (default)
-        state_keys = ['U']; num_state_vars = 1; bc_state_dim = 2; expected_num_controls = 0
-        dataset_params_for_plot = {'nx': 128, 'ny': 1, 'L': 1.0, 'T': FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'euler':
-        dataset_path = "./datasets_full/euler_data_10000s_128nx_600nt.pkl"
-        state_keys = ['rho', 'u']; num_state_vars = 2; bc_state_dim = 4; expected_num_controls = 0
-        dataset_params_for_plot = {'nx': 128, 'ny': 1, 'L': 1.0, 'T': FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'burgers':
-        dataset_path = "./datasets_full/burgers_data_10000s_128nx_600nt.pkl"
-        state_keys = ['U']; num_state_vars = 1; bc_state_dim = 2; expected_num_controls = 0
-        dataset_params_for_plot = {'nx': 128, 'ny': 1, 'L': 1.0, 'T': FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'darcy':
-        # IMPORTANT: The Darcy generator in your script hardcodes nt=50.
-        # If your darcy files reflect --nt 600 --T 2, this section is fine.
-        # If they reflect the internal nt=50, T=1 (approx), then FULL_NT_IN_DATAFILE and FULL_T_IN_DATAFILE
-        # must be changed here for Darcy (e.g., 50 and 1.0 respectively).
-        dataset_path = "./datasets_full/darcy_data_10000s_128nx_600nt.pkl"
-        state_keys = ['P']; num_state_vars = 1; bc_state_dim = 2; expected_num_controls = 0
-        # For Darcy, nx_file is 128 (total spatial points if 1D solver, or one dim if 2D)
-        # The UniversalPDEDataset tries to infer nx, ny. For plotting, we pass explicitly.
-        # If Darcy was solved on 1D grid:
-        dataset_params_for_plot = {'nx': 128, 'ny': 1, 'L': 1.0, 'T': FULL_T_IN_DATAFILE}
-        # If Darcy was solved on e.g. 32x32 (if nx was 32 and ny was also 32 from generator):
-        # dataset_params_for_plot = {'nx': 32, 'ny': 32, 'L': 1.0, 'T': FULL_T_IN_DATAFILE}
-        # Your Darcy generator uses nx for 1D solve, so nx=128, ny=1 is appropriate here.
-    elif DATASET_TYPE == 'heat_delayed_feedback':
+    if DATASET_TYPE == 'heat_delayed_feedback':
         dataset_path = "./datasets_new_feedback/heat_delayed_feedback_v1_5000s_64nx_300nt.pkl" # UPDATE PATH
         state_keys = ['U']; num_state_vars = 1
         dataset_params_for_plot = {'nx': 64, 'ny': 1, 'L': 1.0, 'T': FULL_T_IN_DATAFILE}
