@@ -1,7 +1,3 @@
-# =============================================================================
-#        COMPLETE CODE: Handling Advection, Euler, Burgers, Darcy Eq.
-#     with Control Inputs, Modified Lifting, and Multi-Variable Support
-# =============================================================================
 import os
 import numpy as np
 import torch
@@ -17,8 +13,9 @@ from scipy.sparse.linalg import spsolve
 import argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver
-# ---------------------
-# 固定随机种子
+
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -26,11 +23,8 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 2. 通用化数据集定义
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None): # Added train_nt_limit
         """
@@ -45,15 +39,8 @@ class UniversalPDEDataset(Dataset):
         self.dataset_type = dataset_type
         self.train_nt_limit = train_nt_limit # Store the limit
 
-        # --- 从第一个样本推断参数 ---
         first_sample = data_list[0]
         params = first_sample.get('params', {})
-
-        # --- 获取样本中的原始nt, nx, ny ---
-        # This 'self.nt_from_sample' will be the full length in the file
-
-
-        # Determine effective nt for the dataset instance (used in __getitem__)
 
 
         if dataset_type == 'heat_delayed_feedback':
@@ -127,7 +114,6 @@ class UniversalPDEDataset(Dataset):
         sample = self.data_list[idx]
         norm_factors = {}
 
-        # --- Potentially truncate sequences ---
         current_nt = self.effective_nt # Use the effective_nt for slicing
 
         state_tensors_norm_list = []
@@ -159,7 +145,6 @@ class UniversalPDEDataset(Dataset):
             raise ValueError(f"Time dimension mismatch for BC_State. Expected {current_nt}, got {bc_state_seq.shape[0]}")
 
         bc_state_norm = np.zeros_like(bc_state_seq, dtype=np.float32)
-        # ... (rest of BC_State normalization logic, applied to 'bc_state_seq')
         norm_factors[f'{self.bc_state_key}_means'] = np.zeros(self.bc_state_dim)
         norm_factors[f'{self.bc_state_key}_stds'] = np.ones(self.bc_state_dim)
         for k_dim in range(self.bc_state_dim): # Renamed loop variable
@@ -176,7 +161,6 @@ class UniversalPDEDataset(Dataset):
         bc_state_tensor_norm = torch.tensor(bc_state_norm).float()
 
 
-        # --- BC Control ---
         if self.num_controls > 0:
             try:
                 bc_control_seq_full = sample[self.bc_control_key]
@@ -184,7 +168,6 @@ class UniversalPDEDataset(Dataset):
 
                 if bc_control_seq.shape[0] != current_nt:
                     raise ValueError(f"Time dimension mismatch for BC_Control. Expected {current_nt}, got {bc_control_seq.shape[0]}.")
-                # ... (rest of BC_Control normalization logic, applied to 'bc_control_seq')
                 bc_control_norm = np.zeros_like(bc_control_seq, dtype=np.float32)
                 norm_factors[f'{self.bc_control_key}_means'] = np.zeros(self.num_controls)
                 norm_factors[f'{self.bc_control_key}_stds'] = np.ones(self.num_controls)
@@ -213,11 +196,6 @@ class UniversalPDEDataset(Dataset):
         return state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors
 
 
-
-# =============================================================================
-# 3. 通用化 POD 基计算 (优化 U_B 定义)
-# =============================================================================
-# In your model/training script
 def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
                               nx, nt, basis_dim, # nt here is the TRUNCATED length
                               max_snapshots_pod=100):
@@ -261,17 +239,13 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
         U_star = U_seq - U_B
         snapshots.append(U_star)
         count += 1
-    # ... (rest of the POD function remains the same) ...
     if not snapshots:
         print(f"Error: No valid snapshots collected for POD for '{state_variable_key}'. Ensure 'nt' ({nt}) is appropriate.")
         return None
-    # ... (rest of SVD and basis calculation)
     try:
         snapshots = np.concatenate(snapshots, axis=0) # [total_nt_steps, nx]
     except ValueError as e:
-        # ... (error handling as before) ...
         print(f"Error concatenating snapshots for '{state_variable_key}': {e}. Check snapshot shapes. Collected {len(snapshots)} lists of snapshots.")
-        # Attempt to filter potentially problematic shapes (simple check)
         valid_snapshots_for_concat = []
         for s_idx, s_item in enumerate(snapshots):
             if s_item.shape[0] == nt and s_item.shape[1] == current_nx : # Each item should have nt rows
@@ -288,7 +262,6 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
         except ValueError as e2:
              print(f"  Error even after filtering: {e2}. Aborting POD for '{state_variable_key}'.")
              return None
-    # ... (the rest of the POD logic: mean centering, SVD, normalization, padding)
     if np.isnan(snapshots).any() or np.isinf(snapshots).any():
         print(f"Warning: NaN/Inf found in snapshots for '{state_variable_key}' before POD. Clamping.")
         snapshots = np.nan_to_num(snapshots, nan=0.0, posinf=1e6, neginf=-1e6)
@@ -329,14 +302,8 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     return basis.astype(np.float32)
 
 
-
-# =============================================================================
-# 4. 模型定义 - 修改Lifting和ROM以支持多变量
-# =============================================================================
-
-# 4.1. Feedforward 更新网络 (不变)
+# 4.1. Feedforward
 class ImprovedUpdateFFN(nn.Module):
-     # ... (keep implementation from previous response) ...
      def __init__(self, input_dim, hidden_dim=256, num_layers=3, dropout=0.1):
         super().__init__()
         layers = []
@@ -357,9 +324,8 @@ class ImprovedUpdateFFN(nn.Module):
         return out
 
 
-# 4.2. Lifting 模块: 支持多变量状态输入和多变量状态输出 (增强容量)
+# 4.2. Lifting
 class UniversalLifting(nn.Module):
-    # <<< MODIFIED: Increased default capacity and added fusion layer
     def __init__(self, num_state_vars, bc_state_dim, num_controls, output_dim_per_var, nx,
                  # Increased default hidden dimensions
                  hidden_dims_state_branch=64,
@@ -386,8 +352,6 @@ class UniversalLifting(nn.Module):
         self.nx = nx
         assert output_dim_per_var == nx, "output_dim_per_var must equal nx"
 
-        # --- State Branches ---
-        # Create branches for each boundary state input component
         self.state_branches = nn.ModuleList()
         if self.bc_state_dim > 0:
              for _ in range(bc_state_dim):
@@ -395,9 +359,7 @@ class UniversalLifting(nn.Module):
                  self.state_branches.append(nn.Sequential(
                      nn.Linear(1, hidden_dims_state_branch),
                      nn.GELU(),
-                     # Optional: Add another layer if needed
-                     # nn.Linear(hidden_dims_state_branch, hidden_dims_state_branch),
-                     # nn.GELU()
+
                  ))
              state_feature_dim = bc_state_dim * hidden_dims_state_branch
         else:
@@ -417,12 +379,10 @@ class UniversalLifting(nn.Module):
             self.control_mlp = nn.Sequential(*control_layers)
             control_feature_dim = current_dim # Output dim of control MLP
         else:
-             # Define an empty sequential if no controls, avoids errors later
              self.control_mlp = nn.Sequential()
 
 
         # --- Fusion Network ---
-        # Takes concatenated state features and control features
         fusion_input_dim = state_feature_dim + control_feature_dim
         fusion_layers = []
         current_dim = fusion_input_dim
@@ -448,7 +408,6 @@ class UniversalLifting(nn.Module):
         """
         features_to_concat = []
 
-        # Process State BCs if they exist
         if self.bc_state_dim > 0:
             BC_state = BC_Ctrl[:, :self.bc_state_dim]
             state_features_list = []
@@ -459,7 +418,6 @@ class UniversalLifting(nn.Module):
             state_features = torch.cat(state_features_list, dim=-1) # [batch, state_feature_dim]
             features_to_concat.append(state_features)
 
-        # Process Control BCs if they exist
         if self.num_controls > 0:
             # Ensure slicing is correct even if bc_state_dim is 0
             BC_control = BC_Ctrl[:, self.bc_state_dim:]
@@ -468,11 +426,7 @@ class UniversalLifting(nn.Module):
 
         # Concatenate features
         if not features_to_concat:
-             # Handle case with no BCs/Controls? Should likely not happen based on problem.
-             # Maybe raise error or return zeros? Assuming at least one input type exists.
-             # For safety, create a zero tensor of expected fusion input dim if needed
-             # This part needs careful consideration based on expected use cases.
-             # Let's assume fusion_input_dim > 0
+
              raise ValueError("Lifting network received no state or control inputs.")
 
         if len(features_to_concat) == 1:
@@ -480,19 +434,15 @@ class UniversalLifting(nn.Module):
         else:
             concat_features = torch.cat(features_to_concat, dim=-1)
 
-        # Fusion produces combined output
         fused_output = self.fusion(concat_features) # [batch, num_state_vars * nx]
 
-        # Reshape to separate variables
-        # Use -1 for batch size to handle varying batch sizes correctly
         U_B_stacked = fused_output.view(-1, self.num_state_vars, self.nx) # [batch, num_vars, nx]
 
         return U_B_stacked
 
 
-# 4.3. 多头注意力模块 (不变)
+# 4.3. MultiHeadAttentionROM
 class MultiHeadAttentionROM(nn.Module):
-    # ... (keep implementation from previous response) ...
     def __init__(self, basis_dim, d_model, num_heads):
         super().__init__()
         self.num_heads = num_heads
@@ -519,9 +469,8 @@ class MultiHeadAttentionROM(nn.Module):
         return z
 
 
-# 4.4. Attention-Based ROM: 支持多变量 (修正 W_Q 和 Q 计算)
+# 4.4. Attention-Based ROM
 class MultiVarAttentionROM(nn.Module):
-    # <<< MODIFIED: Reverted W_Q, added alpha, corrected Q calculation
     def __init__(self, state_variable_keys, nx, basis_dim, d_model,
                  bc_state_dim, num_controls, num_heads=8,
                  add_error_estimator=False, shared_attention=False,
@@ -566,7 +515,6 @@ class MultiVarAttentionROM(nn.Module):
         self.alphas = nn.ParameterDict() # <<< MODIFIED: Added ParameterDict for alpha
 
         if shared_attention:
-            # <<< MODIFIED: W_Q input dim is 1
             self.W_Q['shared'] = nn.Linear(1, d_model)
             self.W_K['shared'] = nn.Linear(nx, d_model)
             self.W_V['shared'] = nn.Linear(nx, d_model)
@@ -576,11 +524,9 @@ class MultiVarAttentionROM(nn.Module):
             self.a0_mapping['shared'] = nn.Sequential(
                 nn.Linear(basis_dim, basis_dim), nn.ReLU(), nn.LayerNorm(basis_dim)
             )
-            # <<< MODIFIED: Add shared alpha
             self.alphas['shared'] = nn.Parameter(torch.tensor(initial_alpha))
         else:
             for key in self.state_keys:
-                # <<< MODIFIED: W_Q input dim is 1
                 self.W_Q[key] = nn.Linear(1, d_model)
                 self.W_K[key] = nn.Linear(nx, d_model)
                 self.W_V[key] = nn.Linear(nx, d_model)
@@ -590,7 +536,6 @@ class MultiVarAttentionROM(nn.Module):
                 self.a0_mapping[key] = nn.Sequential(
                      nn.Linear(basis_dim, basis_dim), nn.ReLU(), nn.LayerNorm(basis_dim)
                  )
-                # <<< MODIFIED: Add alpha per variable
                 self.alphas[key] = nn.Parameter(torch.tensor(initial_alpha))
 
 
@@ -612,7 +557,7 @@ class MultiVarAttentionROM(nn.Module):
         a_next_dict = {}
         U_hat_dict = {}
 
-        # Lifting (Compute once)
+        # Lifting 
         U_B_stacked = self.lifting(BC_Ctrl_n) # [batch, num_vars, nx]
 
         for i, key in enumerate(self.state_keys):
@@ -636,8 +581,6 @@ class MultiVarAttentionROM(nn.Module):
             V = V_flat.view(batch_size, self.basis_dim, self.d_model)
 
             # --- Prepare Q (using original method) ---
-            # <<< MODIFIED: Reverted Q calculation
-            # Apply W_Q (Linear(1, d_model)) to each coefficient independently
             a_n_unsq = a_n_var.unsqueeze(-1) # [batch, basis_dim, 1]
             Q_base = W_Q_var(a_n_unsq)      # [batch, basis_dim, d_model]
 
@@ -655,7 +598,6 @@ class MultiVarAttentionROM(nn.Module):
             a_update_attn = proj_var(z_reshaped).view(batch_size, self.basis_dim)
 
             # Combine updates (Attention result + FFN result directly - as per original logic)
-            # Note: ffn_update was already computed for Q. Re-use it.
             a_update = a_update_attn + ffn_update
             a_next_var = a_n_var + a_update
             a_next_dict[key] = a_next_var
@@ -677,8 +619,7 @@ class MultiVarAttentionROM(nn.Module):
 
     # forward method remains the same as in the previous MultiVarAttentionROM
     def forward(self, a0_dict, BC_Ctrl_seq, T, params=None):
-         # ... (Implementation from previous response - no change needed here) ...
-         # Map initial states
+
         a_current_dict = {}
         for key in self.state_keys:
             a0_map = self._get_layer(self.a0_mapping, key)
@@ -702,16 +643,11 @@ class MultiVarAttentionROM(nn.Module):
         return self.Phi[key]
  
 
-# =============================================================================
-# 5. 训练与验证函数 - 支持多变量
-# =============================================================================
-
 def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Added train_nt_target
                         lr=1e-3, num_epochs=50, device='cuda',
                         checkpoint_path='rom_checkpoint.pt', lambda_res=0.05,
                         lambda_orth=0.001, lambda_bc_penalty=0.01,
                         clip_grad_norm=1.0):
-    # <<< MODIFIED: Handles multi-variable training
     model.to(device)
     optimizer = optim.AdamW(filter(lambda p: p.requires_grad, model.parameters()), lr=lr, weight_decay=1e-5)
     mse_loss = nn.MSELoss()
@@ -722,11 +658,9 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
     # --- Checkpoint Loading (simplified) ---
     if os.path.exists(checkpoint_path):
         print(f"Loading existing checkpoint from {checkpoint_path} ...")
-        # Basic loading, assumes compatibility
         try:
             checkpoint = torch.load(checkpoint_path, map_location=device)
             model.load_state_dict(checkpoint['model_state_dict'])
-            # Try loading optimizer state, ignore if error
             if 'optimizer_state_dict' in checkpoint:
                  try:
                      optimizer.load_state_dict(checkpoint['optimizer_state_dict'])
@@ -748,10 +682,7 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
         count = 0
         batch_start_time = time.time()
 
-        # <<< MODIFIED: Unpack potentially multiple state tensors
         for i, (state_data, BC_Ctrl_tensor, norm_factors) in enumerate(data_loader):
-
-            # Move data to device
             if isinstance(state_data, list): # Euler returns list [rho, u]
                 state_tensors = [s.to(device) for s in state_data]
                 batch_size, nt, nx = state_tensors[0].shape # Get dims from first var
@@ -765,7 +696,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
 
             optimizer.zero_grad()
 
-            # --- Initial State Projection (per variable) ---
             a0_dict = {}
             # Get BC+Ctrl at t=0
             BC_ctrl_combined_t0 = BC_Ctrl_tensor[:, 0, :]
@@ -849,12 +779,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_nt_target, # Ad
             epoch_loss += total_batch_loss.item()
             count += 1
 
-            # Print progress
-            # if (i + 1) % 50 == 0:
-            #      batch_time = time.time() - batch_start_time
-            #      print(f"  Epoch {epoch+1}/{num_epochs}, Batch {i+1}/{len(data_loader)}, "
-            #            f"Batch Loss: {total_batch_loss.item():.4e}, Time/Batch: {batch_time/50:.3f}s")
-            #      batch_start_time = time.time()
 
 
         avg_epoch_loss = epoch_loss / count
@@ -899,13 +823,11 @@ def validate_multivar_model(model, data_loader, dataset_type,
                             full_T_in_datafile: float, # Max T value in the raw .pkl file (e.g., 2.0)
                             full_nt_in_datafile: int,device='cuda',
                             save_fig_path='rom_result.png',): # Max nt in the raw .pkl file (e.g., 601 if 0-600)
-    # ... (imports) ...
     model.eval()
     results = {key: {'mse': [], 'rmse': [], 'relative_error': [], 'max_error': []}
                for key in model.state_keys}
     overall_rel_err_T1 = [] # For T=1.0 specifically
 
-    # test_horizons are T values (e.g., [1.0, 1.5, 2.0])
     test_horizons_T_values = [T_value_for_model_training,
                               T_value_for_model_training + 0.5 * (full_T_in_datafile - T_value_for_model_training), # Mid-point
                               full_T_in_datafile] # Full duration
@@ -915,8 +837,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
     print(f"Model was trained with nt={train_nt_for_model_training} for T={T_value_for_model_training}")
     print(f"Datafile contains nt={full_nt_in_datafile} for T={full_T_in_datafile}")
 
-
-    # Process only the first batch for detailed validation plots
     try:
         state_data_full, BC_Ctrl_tensor_full, norm_factors_batch = next(iter(data_loader))
         # data_loader for validation should give FULL sequences from UniversalPDEDataset
@@ -936,11 +856,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
 
     if nt_loaded != full_nt_in_datafile:
         print(f"Warning: nt from val_loader ({nt_loaded}) != full_nt_in_datafile ({full_nt_in_datafile}). Check val_dataset setup.")
-        # Potentially adjust full_nt_in_datafile if loader provides less, but ideally they match.
-        # For now, we proceed assuming nt_loaded is the true full length available for this sample.
-        # full_nt_in_datafile = nt_loaded # Or raise error
 
-    # Extract norm_factors for the first sample
     norm_factors_sample = {}
     for key, val_tensor in norm_factors_batch.items():
         if isinstance(val_tensor, torch.Tensor) or isinstance(val_tensor, np.ndarray):
@@ -982,10 +898,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
         # Forward pass for the current horizon
         U_hat_seq_dict, _ = model(a0_dict, BC_seq_for_pred, T=nt_for_this_horizon)
 
-        # --- Quantitative Evaluation (only if T_test_horizon matches training T) ---
-        # Or, always evaluate against available ground truth up to nt_for_this_horizon
-        # For your request, T=1.0 is special, others are for visual/qualitative.
-        # Let's calculate metrics for ALL horizons against their corresponding ground truth slices.
+
 
         combined_pred_denorm = []
         combined_gt_denorm = []
@@ -1077,9 +990,8 @@ def validate_multivar_model(model, data_loader, dataset_type,
     if overall_rel_err_T1:
         print(f"Overall Avg RelErr for T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_T1):.4e}")
 
-# =============================================================================
-# 6. 主流程 - 可选择数据集类型
-# =============================================================================
+# main script
+
 import pickle
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
@@ -1097,9 +1009,7 @@ if __name__ == '__main__':
     print(f"Using device: {device}")
     print(f"Selected Dataset Type: {DATASET_TYPE.upper()}")
 
-    # --- Key Time Parameters ---
-    # These should align with your dataset generation commands
-    # e.g., python generate_datasets.py --T 2 --nt 600
+
     if DATASET_TYPE in ['heat_delayed_feedback', 'reaction_diffusion_neumann_feedback', 'heat_nonlinear_feedback_gain', 'convdiff']:
         FULL_T_IN_DATAFILE = 2.0
         FULL_NT_IN_DATAFILE = 300 # Number of time points (e.g., if nt=200, indices 0 to 199)
@@ -1111,8 +1021,7 @@ if __name__ == '__main__':
         TRAIN_T_TARGET = 1.5 # Example: train on 80% of the new dataset's T
     else:
         TRAIN_T_TARGET = 1.0 # For existing datasets
-    # Calculate the number of timesteps for training (from 0 to TRAIN_T_TARGET)
-    # (FULL_NT_IN_DATAFILE - 1) is the number of intervals for FULL_T_IN_DATAFILE
+
     TRAIN_NT_FOR_MODEL = int((TRAIN_T_TARGET / FULL_T_IN_DATAFILE) * (FULL_NT_IN_DATAFILE - 1)) + 1
 
     print(f"Full data T={FULL_T_IN_DATAFILE}, nt={FULL_NT_IN_DATAFILE}")
@@ -1234,10 +1143,7 @@ if __name__ == '__main__':
         print("Error: Training dataset is empty. Cannot compute POD.")
         exit()
 
-    # <<< CORRECTED WAY TO GET actual_nt >>>
-    # train_dataset[0] returns -> (state_tensors_norm_list, bc_ctrl_tensor_norm, norm_factors)
-    # train_dataset[0][0] is state_tensors_norm_list (always a list)
-    # train_dataset[0][0][0] is the first state tensor in the list
+
     try:
         # Get the first sample's data to determine nt
         first_sample_data = train_dataset[0]
@@ -1251,9 +1157,6 @@ if __name__ == '__main__':
 
     for key in state_keys:
         basis_path = os.path.join(basis_dir, f'pod_basis_{key}_nx{current_nx}.npy') # current_nx should be correctly set earlier (nx or nx*ny)
-
-        # <<< REMOVED bc_indices lookup, not needed for the optimized POD function >>>
-        # bc_indices = bc_state_indices_map[key] # No longer needed for the function call
 
         loaded_basis = None
         if os.path.exists(basis_path):
@@ -1271,14 +1174,12 @@ if __name__ == '__main__':
         if loaded_basis is None:
             print(f"  Computing POD basis for '{key}' (using nt={actual_nt})...")
 
-            # <<< CORRECTED CALL to compute_pod_basis_generic >>>
             computed_basis = compute_pod_basis_generic(
                 data_list=train_data_list, # Raw list of dicts for POD function to truncate
                 dataset_type=DATASET_TYPE, state_variable_key=key,
                 nx=current_nx_model, nt=TRAIN_NT_FOR_MODEL, # Pass truncated nt
                 basis_dim=basis_dim
             )
-            # <<< END CORRECTION >>>
 
             if computed_basis is not None:
                  pod_bases[key] = computed_basis
