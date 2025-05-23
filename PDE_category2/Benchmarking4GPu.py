@@ -1,4 +1,4 @@
-# BENCHMARK_PDE_MODELS.PY (Revised for multi-sample metrics and visualization)
+# BENCHMARK_PDE_MODELS for there inference performance regarding GPU memories usage, inference efficiency times / sample
 import os
 import numpy as np
 import torch
