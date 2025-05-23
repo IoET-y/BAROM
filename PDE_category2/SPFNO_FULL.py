@@ -1,5 +1,7 @@
+# SPFNO
 # =============================================================================
-#       COMPLETE CODE: SPFNO Baseline Adapted for Task
+#  SPFNO: Spectral operator learning for PDEs with Dirichlet and Neumann boundary conditions (Adapted for Task2) ref:https://github.com/liu-ziyuan-math/SPFNO 
+#
 # =============================================================================
 import os
 import numpy as np
@@ -17,8 +19,8 @@ import torch.fft
 import argparse # Added argparse
 import scipy.sparse as sp
 from scipy.sparse.linalg import spsolve # For Burgers' solver (though not directly used in SPFNO training)
-# ---------------------
-# 固定随机种子
+
+# fixed seed
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -26,12 +28,8 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 0. Fourierpack Functions (Retained from your SPFNO code)
-# =============================================================================
-# ... (sin_transform, isin_transform, cos_transform, icos_transform, WSWA, iWSWA functions - no changes needed)
+
 def sin_transform(u):
     Nx = u.shape[-1]
     V = torch.cat([u, -u.flip(dims=[-1])[..., 1:Nx-1]], dim=-1)
@@ -54,17 +52,6 @@ def isin_transform(a, n=None):
 
     V_complex = torch.zeros_like(V_imag, dtype=torch.complex64)
     V_complex.imag = -V_imag
-    # Corrected scaling for inverse DST-I based on common FFT definitions
-    # The factor of 2.0 comes from the definition of DST-I via FFT of odd extension.
-    # The (N_out-1) factor was in the forward, so it should be inverted here.
-    # However, the original scaling was 1/(Nx-1) in forward, and fft_len * 0.5 in inverse.
-    # Let's try to make it consistent. If forward is / (Nx-1), inverse should be * (Nx-1).
-    # The 0.5 factor is often part of the IFFT definition for DST.
-    # Let's assume the original scaling was intended to be somewhat self-consistent.
-    # A standard DST-I might not have the 1/(Nx-1) scaling.
-    # If using scipy.fft.dst(type=1), no such scaling is applied by default.
-    # For now, maintaining a similar scaling logic to your original, but this might need review
-    # if perfect reconstruction (ignoring numerical errors) is critical.
     u = torch.fft.ifft(V_complex, dim=-1)[..., :N_out].real * (N_out - 1.0) * 0.5 # Matching forward scaling approximately
     return u
 
@@ -104,20 +91,7 @@ def icos_transform(a, n=None): # Inverse DCT-I (scaled)
 
 
     fft_input_complex = torch.zeros_like(fft_input_real, dtype=torch.complex64)
-    # Scaling for DCT-I inverse based on rfft:
-    # Standard irfft(rfft(V)) gives V.
-    # If forward was a = rfft(V).real / (Nx-1), then V_approx = irfft(a * (Nx-1))
-    # The factor of 0.5 for ifft of DCT is often related to specific DCT definitions.
-    # Let's assume the scaling in forward was the main one.
     fft_input_complex.real = fft_input_real
-    # For DCT-I, a_0 and a_{N-1} are often treated differently in sums.
-    # The rfft implicitly handles this for the V construction.
-    
-    # The scaling factor from forward was (Nx-1.0).
-    # The irfft itself will handle the 1/N_fft part.
-    # So, we might need to multiply by (N_out-1.0) before irfft if N_out matches original Nx.
-    # Or, if rfft was used, irfft should directly give the result scaled by 1/fft_len.
-    # Let's assume the V construction for rfft means irfft should reconstruct V.
     u_full = torch.fft.irfft(fft_input_complex, n=fft_len) * (N_out - 1.0) # Apply inverse scaling from forward
     u = u_full[..., :N_out]
     return u
@@ -131,9 +105,7 @@ def iWSWA(a, n=None):
     if N_out == 0 and a.shape[-1] == 1 : N_out = 1
     return torch.fft.irfft(a, n=N_out)
 
-# =============================================================================
-# 1. DATASET CLASS (UniversalPDEDataset - Adapted for new types)
-# =============================================================================
+
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list: raise ValueError("data_list cannot be empty")
@@ -141,16 +113,8 @@ class UniversalPDEDataset(Dataset):
         first_sample = data_list[0]; params = first_sample.get('params', {})
         self.nt_from_sample_file=0; self.nx_from_sample_file=0; self.ny_from_sample_file=1
 
-        if self.dataset_type in ['advection', 'burgers']:
-            self.nt_from_sample_file=first_sample['U'].shape[0]; self.nx_from_sample_file=first_sample['U'].shape[1]
-            self.state_keys=['U']; self.num_state_vars=1; self.expected_bc_state_dim=2
-        elif self.dataset_type == 'euler':
-            self.nt_from_sample_file=first_sample['rho'].shape[0]; self.nx_from_sample_file=first_sample['rho'].shape[1]
-            self.state_keys=['rho','u']; self.num_state_vars=2; self.expected_bc_state_dim=4
-        elif self.dataset_type == 'darcy':
-            self.nt_from_sample_file=first_sample['P'].shape[0]; self.nx_from_sample_file=params.get('nx', first_sample['P'].shape[1])
-            self.ny_from_sample_file=params.get('ny',1); self.state_keys=['P']; self.num_state_vars=1; self.expected_bc_state_dim=2
-        elif self.dataset_type in ['heat_delayed_feedback', 
+
+        if self.dataset_type in ['heat_delayed_feedback', 
                                    'reaction_diffusion_neumann_feedback', 
                                    'heat_nonlinear_feedback_gain', 
                                    'convdiff']:
@@ -207,10 +171,7 @@ class UniversalPDEDataset(Dataset):
         out_state = slist[0] if self.num_state_vars==1 else slist
         return out_state, bc_ctrl_tensor, norm_factors
 
-# =============================================================================
-# FNO Components (SpectralConv1d)
-# =============================================================================
-# ... (SpectralConv1d class - no changes needed)
+
 class SpectralConv1d(nn.Module):
     def __init__(self, in_channels, out_channels, modes1):
         super().__init__(); self.in_channels=in_channels; self.out_channels=out_channels; self.modes1=modes1
@@ -219,11 +180,7 @@ class SpectralConv1d(nn.Module):
     def forward(self, x):
         B=x.shape[0]; x_ft=torch.fft.rfft(x); out_ft=torch.zeros(B,self.out_channels,x.size(-1)//2+1,device=x.device,dtype=torch.cfloat)
         out_ft[:,:,:self.modes1]=self.compl_mul1d(x_ft[:,:,:self.modes1],self.weights1); return torch.fft.irfft(out_ft,n=x.size(-1))
-# =============================================================================
-# SPFNO Specific Components
-# =============================================================================
-# ... (ProjectionFilter1d class - no changes needed)
-# ... (SPFNO1d class - no changes needed)
+
 class ProjectionFilter1d(nn.Module):
     def __init__(self, transform_type='dirichlet'):
         super().__init__()
@@ -290,10 +247,8 @@ class SPFNO1d(nn.Module):
             x_proj_out = self.proj_filter(x_proj_in)
             x_out = x_proj_out.permute(0,2,1)
         return x_out
-# =============================================================================
-# SPFNO Training Function
-# =============================================================================
-# ... (train_spfno_stepper function - no changes needed)
+
+
 def train_spfno_stepper(model, data_loader, dataset_type, train_nt_for_model,
                         lr=1e-3, num_epochs=50, device='cuda',
                         checkpoint_path='spfno_checkpoint.pt', clip_grad_norm=1.0):
@@ -357,10 +312,7 @@ def train_spfno_stepper(model, data_loader, dataset_type, train_nt_for_model,
     if os.path.exists(checkpoint_path): print(f"Loading best SPFNO model"); ckpt=torch.load(checkpoint_path,map_location=device); model.load_state_dict(ckpt['model_state_dict'])
     return model
 
-# =============================================================================
-# SPFNO Validation Function
-# =============================================================================
-# ... (validate_spfno_stepper function - needs to handle new dataset types for state_keys_val)
+
 def validate_spfno_stepper(model, data_loader, dataset_type,
                            train_nt_for_model_training: int, T_value_for_model_training: float,
                            full_T_in_datafile: float, full_nt_in_datafile: int,
@@ -501,9 +453,7 @@ def validate_spfno_stepper(model, data_loader, dataset_type,
     if overall_rel_err_primary_horizon: print(f"  Overall RelErr @ T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_primary_horizon):.3e}")
     print("------------------------")
 
-# =============================================================================
-# Main Block - SPFNO
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Run SPFNO baseline for PDE datasets.") # Corrected description
     parser.add_argument('--datatype', type=str, required=True,
@@ -533,31 +483,8 @@ if __name__ == '__main__':
     main_transform_type = 'dirichlet' # Default, can be overridden
     FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 300 # MUST MATCH GENERATION
     TRAIN_T_TARGET = 1.5  
-    if DATASET_TYPE == 'advection':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/advection_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['U']; main_num_state_vars=1; main_transform_type='dirichlet'
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'euler':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/euler_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['rho','u']; main_num_state_vars=2; main_transform_type='mixed' # Euler often mixed
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'burgers':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/burgers_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['U']; main_num_state_vars=1; main_transform_type='mixed' # Burgers often mixed
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'darcy':
-        FULL_T_IN_DATAFILE = 2.0; FULL_NT_IN_DATAFILE = 600
-        TRAIN_T_TARGET = 1.0
-        dataset_path = "./datasets_full/darcy_data_10000s_128nx_600nt.pkl"
-        main_state_keys=['P']; main_num_state_vars=1; main_transform_type='dirichlet'
-        dataset_params_for_plot={'nx':128,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
-    elif DATASET_TYPE == 'reaction_diffusion_neumann_feedback':
+
+    if DATASET_TYPE == 'reaction_diffusion_neumann_feedback':
         dataset_path = "./datasets_new_feedback/reaction_diffusion_neumann_feedback_v1_5000s_64nx_300nt.pkl" # UPDATE
         main_state_keys=['U']; main_num_state_vars=1
         dataset_params_for_plot={'nx':64,'ny':1,'L':1.0,'T':FULL_T_IN_DATAFILE}
