@@ -266,13 +266,7 @@ class BENOStepper(nn.Module):
         self.bc_ctrl_dim_input = bc_ctrl_dim_input # Total dimension of bc_ctrl_t from data loader
 
         self.num_bc_points = 2 # Hardcoded for left and right boundaries
-        # Calculate feature dimension PER boundary point for the BoundaryEmbedder
-        # Each boundary point gets its own state u(0) or u(L) AND its share of bc_ctrl_t
-        # bc_ctrl_dim_input = (bc_state_dim + num_controls)
-        # If bc_ctrl_dim_input represents features for ALL points, we need to split it.
-        # Assuming bc_ctrl_t already contains [BCState_L, BCState_R, BCCtrl_L, BCCtrl_R] potentially
-        # A robust way: bc_feat_dim = num_state_vars (from u_t at boundary) + (bc_ctrl_dim_input / num_bc_points)
-        # This assumes bc_ctrl_dim_input is evenly divisible and structured for this split.
+
         if bc_ctrl_dim_input % self.num_bc_points != 0:
             print(f"Warning: bc_ctrl_dim_input ({bc_ctrl_dim_input}) not evenly divisible by num_bc_points ({self.num_bc_points}). Adjust feature extraction logic.")
             # Fallback or specific logic might be needed here
@@ -293,9 +287,7 @@ class BENOStepper(nn.Module):
         self.processor1 = GNNLikeProcessor(processor_input_dim,processor_output_dim,hidden_dim,gnn_layers,self.global_embed_dim)
         
         # Input to boundary_processor_input_mlp is the flattened boundary_features
-        # boundary_features has shape [B, num_bc_points, bc_feat_dim]
-        # Flattened it's [B, num_bc_points * bc_feat_dim]
-        # Output should be [B, nx * processor_input_dim] to be reshaped
+
         self.boundary_processor_input_mlp = MLP(self.num_bc_points * self.bc_feat_dim,
                                                 processor_input_dim * nx,
                                                 [hidden_dim * nx // 4, hidden_dim * nx // 2])
@@ -306,29 +298,12 @@ class BENOStepper(nn.Module):
         B = u_t.shape[0]
         u_left = u_t[:,0,:]; u_right = u_t[:,-1,:] # [B, C_state]
 
-        # Split bc_ctrl_t for left and right points
-        # bc_ctrl_t has shape [B, total_bc_ctrl_dim_input]
-        # ctrl_feat_per_bc_point was calculated in __init__
-        # This assumes bc_ctrl_t is structured as [left_ctrl_feats, right_ctrl_feats]
-        # If not, this part needs dataset-specific logic.
-        # Example: if bc_ctrl_t is [StateL_rho, StateL_u, CtrlL, StateR_rho, StateR_u, CtrlR]
-        # For Euler: C_state=2. bc_ctrl_dim_input might be 6 (2 for state_l, 1 for ctrl_l, 2 for state_r, 1 for ctrl_r)
-        # Then ctrl_feat_per_bc_point should be 3. bc_feat_dim = 2 (from u_t) + 3 = 5.
 
-        # Simplified general split:
-        # This assumes bc_ctrl_t structure is [left_features, right_features]
-        # where each part has dimension self.ctrl_feat_per_bc_point
         expected_split_len = self.ctrl_feat_per_bc_point
         
-        # Handle cases where bc_ctrl_dim_input might not be perfectly splittable
-        # or where the structure is more complex (e.g. Euler's specific 4 state + 2 control layout)
-        # For now, using the earlier generic split strategy. More robust logic would be needed for complex bc_ctrl_t structures.
+
         if self.num_state_vars == 2 and self.bc_ctrl_dim_input == (self.state_keys.index('u')*2 + 2 + self.state_keys.index('u')*2 + 2): # Very specific Euler check based on old example
-             # This part is from the original BENO Euler logic where bc_ctrl_t was (state_L, state_R, ctrl_L, ctrl_R)
-             # bc_ctrl_dim for Euler is typically 4 (BC_State from UniversalDataset) + N_controls.
-             # If num_controls=0 for your runs, bc_ctrl_dim_input from data loader = 4
-             # ctrl_feat_per_bc_point = 4/2 = 2. bc_feat_dim = 2(u_t) + 2 = 4.
-             # bc_ctrl_t: [rho_L, u_L, rho_R, u_R]
+
             bc_info_left = bc_ctrl_t[:, :self.num_state_vars] # e.g., rho_L, u_L
             bc_info_right = bc_ctrl_t[:, self.num_state_vars : 2*self.num_state_vars] # e.g., rho_R, u_R
             # If controls exist and are appended after state:
@@ -363,9 +338,7 @@ class BENOStepper(nn.Module):
         u_tp1_pred=self.decoder_mlp(combined_features)
         return u_tp1_pred
 
-# =============================================================================
-# 4. Training and Validation Functions (Adapted for Task)
-# =============================================================================
+
 def train_beno_stepper(model, data_loader, dataset_type, train_nt_for_model, # Added
                        lr=1e-3, num_epochs=50, device='cuda',
                        checkpoint_path='beno_ckpt.pt', clip_grad_norm=1.0):
@@ -525,9 +498,7 @@ def validate_beno_stepper(model, data_loader, dataset_type,
     print("------------------------")
 
 
-# =============================================================================
-# 5. Main Execution Block
-# =============================================================================
+# main script
 if __name__ == '__main__':
     parser = argparse.ArgumentParser(description="Generate PDE datasets with complex BCs.")
     parser.add_argument('--datatype', type=str, required=True, choices=['advection', 'euler', 'burgers', 'darcy','heat_delayed_feedback','reaction_diffusion_neumann_feedback','heat_nonlinear_feedback_gain','convdiff']) # Added convdiff, help='Type of dataset to generate.')
