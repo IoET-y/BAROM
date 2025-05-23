@@ -11,8 +11,7 @@ import time
 import argparse
 import pickle
 
-# ---------------------
-# 固定随机种子 (Fixed random seed)
+# Fixed random seed)
 seed = 42
 random.seed(seed)
 np.random.seed(seed)
@@ -20,11 +19,7 @@ torch.manual_seed(seed)
 if torch.cuda.is_available():
     torch.cuda.manual_seed_all(seed)
 torch.backends.cudnn.deterministic = True
-# ---------------------
 
-# =============================================================================
-# 2. 通用化数据集定义 (UniversalPDEDataset)
-# =============================================================================
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
         if not data_list:
@@ -285,11 +280,9 @@ def compute_pod_basis_generic(data_list, dataset_type, state_variable_key,
     return basis.astype(np.float32)
 
 
-# =============================================================================
-# 4. 模型定义
-# =============================================================================
 
-# 4.1. Feedforward 更新网络 (ImprovedUpdateFFN)
+
+# 4.1. Feedforward 
 class ImprovedUpdateFFN(nn.Module):
     def __init__(self, input_dim, hidden_dim=256, num_layers=3, dropout=0.1, output_dim=None):
         super().__init__()
@@ -317,7 +310,7 @@ class ImprovedUpdateFFN(nn.Module):
             out = self.layernorm(mlp_out)
         return out
 
-# 4.2. Lifting 模块 (UniversalLifting)
+# 4.2. Lifting 
 class UniversalLifting(nn.Module):
     def __init__(self, num_state_vars, bc_state_dim, num_controls, output_dim_per_var, nx,
                  hidden_dims_state_branch=64,
@@ -405,7 +398,7 @@ class UniversalLifting(nn.Module):
         U_B_stacked = fused_output.view(-1, self.num_state_vars, self.nx)
         return U_B_stacked
 
-# 4.3. 多头注意力模块 (MultiHeadAttentionROM base class)
+# 4.3.MultiHeadAttentionROM base class
 class MultiHeadAttentionROM(nn.Module):
     def __init__(self, basis_dim, d_model, num_heads):
         super().__init__()
@@ -792,12 +785,7 @@ class MultiVarAttentionROM(nn.Module):
     def get_basis(self, key):
         return self.Phi[key]
 
-# =============================================================================
-# 5. 训练与验证函数
-# =============================================================================
-# =============================================================================
-# 5. 训练与验证函数
-# =============================================================================
+
 def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_arg, # Renamed for clarity
                          lr=1e-3, num_epochs=50, device='cuda',
                          checkpoint_path='rom_checkpoint.pt', lambda_res=0.05,
@@ -845,13 +833,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
 
             BC_Ctrl_tensor = BC_Ctrl_tensor.to(device) # Shape [batch, N_pts, bc_dim]
 
-            # nt_data_loader_points is the number of data points (e.g., 225 means indices 0 to 224).
-            # train_model_steps_T_arg is the number of steps the model should take (e.g., 224 steps).
-            # The model.forward(T=train_model_steps_T_arg) will produce train_model_steps_T_arg predictions:
-            # U_hat^1, U_hat^2, ..., U_hat^{train_model_steps_T_arg}.
-            # The BC_Ctrl_tensor needs to be long enough for U_B^{n+1} term.
-            # If model runs for T_steps, it needs BC_Ctrl up to index T_steps (i.e., length T_steps+1).
-            # nt_data_loader_points should be T_steps+1.
             if nt_data_loader_points != train_model_steps_T_arg + 1:
                 raise ValueError(
                     f"Data loader provided {nt_data_loader_points} points. "
@@ -874,10 +855,7 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
                 Phi_T_var = Phi_var.transpose(0, 1).unsqueeze(0).expand(batch_size, -1, -1)
                 a0_dict[key] = torch.bmm(Phi_T_var, U0_star_var).squeeze(-1) # a^0
 
-            # Model runs for `train_model_steps_T_arg` steps.
-            # It needs BC_Ctrl_tensor with indices 0 to `train_model_steps_T_arg`
-            # The BC_Ctrl_tensor from DataLoader has indices 0 to `nt_data_loader_points-1`.
-            # Since nt_data_loader_points = train_model_steps_T_arg + 1, this is correct.
+
             U_hat_seq_dict, _ = model(a0_dict, BC_Ctrl_tensor, T=train_model_steps_T_arg, params=None)
             # U_hat_seq_dict[key] contains U_hat^1, ..., U_hat^{train_model_steps_T_arg}
 
@@ -891,17 +869,13 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
                 Phi_var = model.get_basis(key)
                 Phi_T_var = Phi_var.transpose(0, 1).unsqueeze(0).expand(batch_size, -1, -1)
 
-                # pred_seq_var contains U_hat^1, ..., U_hat^{train_model_steps_T_arg}
-                # Shape: [batch, train_model_steps_T_arg, nx]
+
                 pred_seq_var = U_hat_seq_dict[key]
 
-                # state_tensors[k] contains U^0, ..., U^{train_model_steps_T_arg} (since nt_data_loader_points = train_model_steps_T_arg + 1)
-                # We want to compare with U_true^1, ..., U_true^{train_model_steps_T_arg}
+
                 targets_for_loss = state_tensors[k][:, 1 : train_model_steps_T_arg + 1, :]
-                # Shape: [batch, train_model_steps_T_arg, nx]
 
                 if pred_seq_var.shape[1] != targets_for_loss.shape[1]:
-                    # This should not happen if T in model.forward is train_model_steps_T_arg
                     raise ValueError(f"Shape mismatch for loss: preds {pred_seq_var.shape}, targets {targets_for_loss.shape}")
 
                 current_var_mse_loss = mse_loss(pred_seq_var, targets_for_loss)
@@ -930,7 +904,7 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
                          boundary_penalty_val += mse_loss(Phi_var[0, :], torch.zeros_like(Phi_var[0, :]))
 
             mse_recon_loss_val /= len(state_keys)
-            residual_orth_loss_val /= len(state_keys)
+            residual_orth_loss_val /= len(state_keys) # not used in experiment
             orth_loss_val /= len(state_keys)
             boundary_penalty_val /= len(state_keys)
 
@@ -938,7 +912,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
                                lambda_res * residual_orth_loss_val + \
                                lambda_orth * orth_loss_val + \
                                lambda_bc_penalty * boundary_penalty_val
-            # ... (rest of the training loop: backward pass, optimizer step, logging, checkpointing)
             if torch.isnan(total_batch_loss) or torch.isinf(total_batch_loss):
                 print(f"NaN/Inf loss detected at epoch {epoch+1}, batch {i+1}. Skipping batch.")
                 optimizer.zero_grad()
@@ -951,7 +924,7 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
 
             epoch_loss += total_batch_loss.item()
             count += 1
-        # ... (end of epoch logging and checkpointing) ...
+
         if count > 0:
             avg_epoch_loss = epoch_loss / count
             print(f"Epoch {epoch+1}/{num_epochs} finished. Average Training Loss: {avg_epoch_loss:.6f}")
@@ -975,7 +948,6 @@ def train_multivar_model(model, data_loader, dataset_type, train_model_steps_T_a
         else:
             print(f"Epoch {epoch+1}/{num_epochs} finished. No batches processed successfully.")
 
-    # ... (end of training: load best model) ...
     print("Training finished.")
     if os.path.exists(checkpoint_path):
         print(f"Loading best model from {checkpoint_path}")
@@ -988,7 +960,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
                             T_value_for_model_training: float,
                             full_T_in_datafile: float,
                             full_nt_in_datafile: int, device='cuda',
-                            save_fig_path='rom_result.png'):
+                            save_fig_path='barom_result.png'):
     model.eval()
     results = {key: {'mse': [], 'rmse': [], 'relative_error': [], 'max_error': []}
                for key in model.state_keys}
@@ -1020,16 +992,12 @@ def validate_multivar_model(model, data_loader, dataset_type,
 
     BC_Ctrl_tensor_full_sample = BC_Ctrl_tensor_full_batch[0:1].to(device) # [1, full_loader_nt, bc_dim]
 
-    # The UniversalDataset for validation is set with train_nt_limit=None, so it loads full sequence.
-    # nt_loaded_from_val_loader should be full_nt_in_datafile.
+
     if nt_loaded_from_val_loader != full_nt_in_datafile:
         print(f"Warning: nt from val_loader ({nt_loaded_from_val_loader}) != full_nt_in_datafile ({full_nt_in_datafile}). Adjusting.")
-        # This can happen if the pickle file itself has shorter sequences than expected full_nt
-        # For safety, use the actual loaded length as the max.
+
         full_nt_in_datafile = nt_loaded_from_val_loader
-        # Also adjust full_T_in_datafile proportionally if dt is assumed constant
-        # Or, better, assume full_T_in_datafile is fixed and dt might vary slightly.
-        # For now, we just cap nt.
+
 
     norm_factors_sample = {}
     for key_nf, val_tensor_nf in norm_factors_batch.items():
@@ -1053,8 +1021,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
         a0_dict[key_a0] = a0
 
     for T_test_horizon_physical in test_horizons_T_values:
-        # Convert physical T_test_horizon to number of discrete time steps (model steps)
-        # (full_nt_in_datafile - 1) intervals for full_T_in_datafile
         if full_T_in_datafile > 1e-6 : # Avoid division by zero if full_T is very small
             dt_approx = full_T_in_datafile / (full_nt_in_datafile -1) if full_nt_in_datafile > 1 else full_T_in_datafile
             nt_steps_for_this_horizon = int(round(T_test_horizon_physical / dt_approx))
@@ -1071,8 +1037,6 @@ def validate_multivar_model(model, data_loader, dataset_type,
             continue
 
         # BC_Ctrl_seq for model needs to cover up to nt_steps_for_this_horizon for U_B^{n+1} term
-        # So, needs length nt_steps_for_this_horizon + 1 (indices 0 to nt_steps_for_this_horizon)
-        # The T argument to model.forward is the number of a_n -> a_{n+1} steps.
         # If T_model = nt_steps_for_this_horizon, it predicts U_hat^1...U_hat^{nt_steps_for_this_horizon}
         required_bc_ctrl_len = nt_steps_for_this_horizon + 1
         if BC_Ctrl_tensor_full_sample.shape[1] < required_bc_ctrl_len:
@@ -1106,8 +1070,7 @@ def validate_multivar_model(model, data_loader, dataset_type,
             pred_denorm = pred_norm_seq * std_k + mean_k # Denormalized U_hat^1 ... U_hat^{nt_steps}
 
             # Ground Truth: U_true^1, ..., U_true^{nt_steps_for_this_horizon}
-            # state_tensors_full_sample[k_var_idx] is [1, full_loader_nt, nx] (U_true^0 ... U_true^{full_loader_nt-1})
-            # We need gt for time points 1 to nt_steps_for_this_horizon
+
             gt_norm_full_var = state_tensors_full_sample[k_var_idx].squeeze(0).cpu().numpy()
             # Slice for U_true^1 to U_true^{nt_steps_for_this_horizon}
             gt_norm_sliced_for_comp = gt_norm_full_var[1 : nt_steps_for_this_horizon + 1, :]
@@ -1191,11 +1154,8 @@ def validate_multivar_model(model, data_loader, dataset_type,
         print(f"Overall Avg RelErr for Physical T={T_value_for_model_training:.1f}: {np.mean(overall_rel_err_at_train_T):.4e}")
 
 
-# =============================================================================
-# 6. 主流程
-# =============================================================================
+# main script
 if __name__ == '__main__':
-    # ... (parser setup remains the same) ...
     parser = argparse.ArgumentParser(description="Train ROM models with various configurations.")
     parser.add_argument('--datatype', type=str, required=True,
                         choices=['heat_delayed_feedback', 'reaction_diffusion_neumann_feedback',
@@ -1212,7 +1172,6 @@ if __name__ == '__main__':
     parser.add_argument('--lr', type=float, default=5e-4)
     parser.add_argument('--batch_size', type=int, default=32, help='Batch size for training.')
     args = parser.parse_args()
-    # ... (DATASET_TYPE, USE_FIXED_LIFTING_ABLATION, etc. definitions remain the same) ...
     DATASET_TYPE = args.datatype
     USE_FIXED_LIFTING_ABLATION = args.use_fixed_lifting
     RANDOM_PHI_INIT_ABLATION = args.random_phi_init
@@ -1220,7 +1179,7 @@ if __name__ == '__main__':
     device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
     learning_rate = args.lr
     num_epochs = args.num_epochs
-    lambda_res = 0.05
+    lambda_res = 0
     lambda_orth = 0.001
     lambda_bc_penalty = 0.01
     clip_grad_norm = 1.0
@@ -1230,7 +1189,6 @@ if __name__ == '__main__':
     print(f"Using fixed lifting: {USE_FIXED_LIFTING_ABLATION}")
     print(f"Using random Phi init: {RANDOM_PHI_INIT_ABLATION}")
 
-    # --- Time parameters ---
     if DATASET_TYPE in ['heat_delayed_feedback', 'reaction_diffusion_neumann_feedback', 'heat_nonlinear_feedback_gain', 'convdiff']:
         FULL_T_IN_DATAFILE = 2.0
         FULL_NT_IN_DATAFILE = 300 # Number of points t=0 to t=299 (total 300 points)
@@ -1245,17 +1203,11 @@ if __name__ == '__main__':
     if FULL_NT_IN_DATAFILE <= 1:
         TRAIN_NT_DATA_LOADER_POINTS = FULL_NT_IN_DATAFILE
     else:
-        # Calculate number of points for the training physical horizon
-        # If TRAIN_T_TARGET_PHYSICAL = 1.5, FULL_T = 2.0, FULL_NT_POINTS = 300 (indices 0-299)
-        # Ratio = 1.5 / 2.0 = 0.75
-        # Num intervals in full data = 299
-        # Num intervals for train = 0.75 * 299 = 224.25 -> round to 224
-        # Num points for train = 224 intervals + 1 (for U^0) = 225 points (indices 0-224)
+
         TRAIN_NT_DATA_LOADER_POINTS = int(round((TRAIN_T_TARGET_PHYSICAL / FULL_T_IN_DATAFILE) * (FULL_NT_IN_DATAFILE - 1))) + 1
 
     # TRAIN_MODEL_STEPS_T: Number of steps a^n -> a^{n+1} the model will perform.
-    # If data has N_pts (U^0 to U^{N_pts-1}), model can make N_pts-1 steps
-    # to predict U_hat^1 to U_hat^{N_pts-1}.
+
     TRAIN_MODEL_STEPS_T = TRAIN_NT_DATA_LOADER_POINTS - 1
 
     if TRAIN_MODEL_STEPS_T <= 0: # Ensure at least one step
@@ -1271,8 +1223,7 @@ if __name__ == '__main__':
     print(f"Model will run for T_model_steps={TRAIN_MODEL_STEPS_T} steps, predicting U_hat^1 to U_hat^{TRAIN_MODEL_STEPS_T}.")
 
 
-    # --- Path settings (run_name, checkpoint_dir, etc.) ---
-    # ... (Path settings remain the same) ...
+
     timestamp = time.strftime("%Y%m%d-%H%M%S")
     suffix_lift = "_fixedlift" if USE_FIXED_LIFTING_ABLATION else ""
     suffix_phi = "_randphi" if RANDOM_PHI_INIT_ABLATION else ""
@@ -1315,23 +1266,20 @@ if __name__ == '__main__':
 
 
     # --- Data splitting and loading ---
-    # ... (Data splitting logic remains the same) ...
+    # keep same seed for data split in both training and evaluation!!
     random.shuffle(data_list)
     n_total = len(data_list); n_train = int(0.8 * n_total)
     train_data_list = data_list[:n_train]; val_data_list = data_list[n_train:]
     print(f"Train samples: {len(train_data_list)}, Validation samples: {len(val_data_list)}")
 
 
-    # UniversalPDEDataset's train_nt_limit is TRAIN_NT_DATA_LOADER_POINTS
     train_dataset = UniversalPDEDataset(train_data_list, dataset_type=DATASET_TYPE, train_nt_limit=TRAIN_NT_DATA_LOADER_POINTS)
     val_dataset = UniversalPDEDataset(val_data_list, dataset_type=DATASET_TYPE, train_nt_limit=None) # Val loads full sequence
     num_workers = 2
     train_loader = DataLoader(train_dataset, batch_size=args.batch_size, shuffle=True, num_workers=num_workers, pin_memory=True, drop_last=True)
     val_loader = DataLoader(val_dataset, batch_size=1, shuffle=False, num_workers=num_workers)
 
-    # ... (Model instantiation, POD init, training, validation calls remain the same) ...
-    # Make sure to pass `TRAIN_MODEL_STEPS_T` to `train_multivar_model`
-    # And pass the correct time/step parameters to `validate_multivar_model`
+
 
     current_nx_model = train_dataset.nx
     model_num_controls = train_dataset.num_controls
@@ -1360,7 +1308,6 @@ if __name__ == '__main__':
         pod_bases = {}
         actual_nt_for_pod_computation = TRAIN_NT_DATA_LOADER_POINTS
         print(f"Computing POD using nt={actual_nt_for_pod_computation} points from training data.")
-        # ... (rest of POD loading/computation logic) ...
         for key_pod_loop in state_keys:
             basis_filename = f'pod_basis_{key_pod_loop}_nx{current_nx_model}_nt{actual_nt_for_pod_computation}_bdim{args.basis_dim}.npy'
             basis_path = os.path.join(basis_dir, basis_filename)
