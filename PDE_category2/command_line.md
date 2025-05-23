@@ -2,6 +2,30 @@ nohup python BAROM_ImpBC.py --datatype convdiff_feedback > out_BAROM_ImpBC_convd
 nohup python BAROM_ImpBC.py --datatype reaction_diffusion_neumann_feedback > out_BAROM_ImpBC_reaction_diffusion_neumann_feedback.log 2>&1 &
 nohup python BAROM_ImpBC.py --datatype heat_nonlinear_feedback_gain > out_BAROM_ImpBC_heat_nonlinear_feedback_gain.log 2>&1 &
 
+python BAROM_ExpBC.py --datatype heat_nonlinear_feedback_gain \
+                         --basis_dim 32 \
+                         --d_model 512 \
+                         --num_heads 8 \
+                         --bc_processed_dim 32 \
+                         --hidden_bc_processor_dim 128 > out_EBC_head8ROM_heat_nonlinear_feedback_gain.log 2>&1 &
+
+python BAROM_ExpBC.py --datatype reaction_diffusion_neumann_feedback \
+                         --basis_dim 32 \
+                         --d_model 512 \
+                         --num_heads 8 \
+                         --bc_processed_dim 32 \
+                         --hidden_bc_processor_dim 128  > out_EBC_head8ROM_reaction_diffusion_neumann_feedback.log 2>&1 &
+
+python BAROM_ExpBC.py --datatype convdiff \
+                         --basis_dim 32 \
+                         --d_model 512 \
+                         --num_heads 8 \
+                         --bc_processed_dim 32 \
+                         --hidden_bc_processor_dim 128  > out_EBC_head8ROM_convdiff.log 2>&1 &
+
+
+
+
 nohup python FNO.py --datatype convdiff  > out_FNO_convdiff_feedback.log 2>&1 &
 nohup python FNO.py --datatype reaction_diffusion_neumann_feedback  > out_FNO_reaction_diffusion_neumann_feedback.log 2>&1 &
 nohup python FNO.py --datatype heat_nonlinear_feedback_gain > out_FNO_heat_nonlinear_feedback_gain.log 2>&1 &
