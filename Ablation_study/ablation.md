@@ -1,102 +1,25 @@
-nohup python ROM_poddim.py --datatype reaction_diffusion_neumann_feedback --poddim 8 > out_ROM_reaction_diffusion_neumann_feedback_8.log 2>&1 & 
+nohup python BAROM_poddim.py --datatype reaction_diffusion_neumann_feedback --poddim 8 > out_BAROM_reaction_diffusion_neumann_feedback_8.log 2>&1 & 
 
-nohup python ROM_poddim.py --datatype reaction_diffusion_neumann_feedback --poddim 16 > out_ROM_reaction_diffusion_neumann_feedback_16.log 2>&1 & 
+nohup python BAROM_poddim.py --datatype reaction_diffusion_neumann_feedback --poddim 16 > out_BAROM_reaction_diffusion_neumann_feedback_16.log 2>&1 & 
 
-nohup python ROM_poddim.py --datatype reaction_diffusion_neumann_feedback --poddim 24 > out_ROM_reaction_diffusion_neumann_feedback_24.log 2>&1 & 
+nohup python BAROM_poddim.py --datatype reaction_diffusion_neumann_feedback --poddim 24 > out_BAROM_reaction_diffusion_neumann_feedback_24.log 2>&1 & 
 
-python ROM_fixedlifting.py --datatype reaction_diffusion_neumann_feedback --use_fixed_lifting > out_ROM_reaction_diffusion_neumann_feedback_32_fixedlifting.log 2>&1 & 
+python BAROM_fixedlifting.py --datatype reaction_diffusion_neumann_feedback --use_fixed_lifting > out_BAROM_reaction_diffusion_neumann_feedback_32_fixedlifting.log 2>&1 & 
 
-python ROM_Random_pod.py --datatype reaction_diffusion_neumann_feedback --random_phi_init > out_ROM_reaction_diffusion_neumann_feedback_32_random_pod.log 2>&1 & 
+python BAROM_Random_pod.py --datatype reaction_diffusion_neumann_feedback --random_phi_init > out_BAROM_reaction_diffusion_neumann_feedback_32_random_pod.log 2>&1 & 
 
-python EBC_ROM_LSTM.py --datatype reaction_diffusion_neumann_feedback --use_lstm_rom --lstm_hidden_dim 360 --num_lstm_layers 1 --lstm_control_emb_dim 32 > out_ROM_reaction_diffusion_neumann_feedback_32_LSTM.log 2>&1 & 
 
-python IBC_ROM_LSTM.py --datatype reaction_diffusion_neumann_feedback --use_lstm_rom --lstm_no_explicit_bc --use_lstm_rom --lstm_hidden_dim 360 --num_lstm_layers 1 --lstm_control_emb_dim 32 > out_ROM_reaction_diffusion_neumann_feedback_32_IBC_LSTM.log 2>&1 & 
-
-python ROM_Noattn.py --datatype reaction_diffusion_neumann_feedback --model_variant explicit_bc_no_attn \
+python BAROM_Non_attention.py --datatype reaction_diffusion_neumann_feedback --model_variant explicit_bc_no_attn \
                          --basis_dim 32 \
                          --d_model 512 \
                          --bc_processed_dim 32 \
                          --hidden_bc_processor_dim 128  > out_EBC_Noattn_reaction_diffusion_neumann_feedback.log 2>&1 &
 
-python ROM_Noattn.py --datatype reaction_diffusion_neumann_feedback --model_variant implicit_bc_no_attn \
+python BAROM_Non_attention.py --datatype reaction_diffusion_neumann_feedback --model_variant implicit_bc_no_attn \
                          --basis_dim 32 \
                          --d_model 512 \
                          --bc_processed_dim 32 \
                          --hidden_bc_processor_dim 128  > out_IBC_Noattn_reaction_diffusion_neumann_feedback.log 2>&1 &
-
-
-# (可以调整 LSTM 参数, e.g., --lstm_hidden_dim 128)
-# (可以组合其他 ablation flags)
-
-
-python EBC_ROM.py --datatype heat_nonlinear_feedback_gain \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128 > out_EBC_ROM_heat_nonlinear_feedback_gain.log 2>&1 &
-
-python EBC_ROM.py --datatype reaction_diffusion_neumann_feedback \
-                         --basis_dim 32 \
-                         --d_model 256 \
-                         --num_heads 4 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128  > out_EBC_head4_ROM_reaction_diffusion_neumann_feedback.log 2>&1 &
-
-python EBC_ROM.py --datatype convdiff \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128  > out_EBC_ROM_convdiff.log 2>&1 &
-
-
-python EBC_ROM_v2.py --datatype heat_nonlinear_feedback_gain \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128 > out_EBC_headROMv2_heat_nonlinear_feedback_gain.log 2>&1 &
-
-python EBC_ROM_v2.py --datatype reaction_diffusion_neumann_feedback \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128  > out_EBC_head8ROMv2_reaction_diffusion_neumann_feedback.log 2>&1 &
-
-python EBC_ROM_v2.py --datatype convdiff \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128  > out_EBC_head8ROMv2_convdiff.log 2>&1 &
-
-
-
-
-
-python EBC_ROM_v3.py --datatype heat_nonlinear_feedback_gain \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128 > out_EBC_headROMv3_heat_nonlinear_feedback_gain.log 2>&1 &
-
-python EBC_ROM_v3.py --datatype reaction_diffusion_neumann_feedback \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128  > out_EBC_head8ROMv3_reaction_diffusion_neumann_feedback.log 2>&1 &
-
-python EBC_ROM_v3.py --datatype convdiff \
-                         --basis_dim 32 \
-                         --d_model 512 \
-                         --num_heads 8 \
-                         --bc_processed_dim 32 \
-                         --hidden_bc_processor_dim 128  > out_EBC_head8ROMv3_convdiff.log 2>&1 &
-
 
 
 
