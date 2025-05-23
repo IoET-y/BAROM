@@ -510,7 +510,7 @@ if __name__ == '__main__':
     trunk_p_dim = 256   # Renamed
     learning_rate = 3e-4
     batch_size = 32
-    num_epochs = 80 # DeepONet might need more epochs or larger batches
+    num_epochs = 150 # DeepONet might need more epochs or larger batches
     clip_grad_norm = 1.0
 
     dataset_params_for_plot = {}
