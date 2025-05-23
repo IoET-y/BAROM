@@ -13,7 +13,13 @@ import argparse
 from torch.utils.data import Dataset, DataLoader
 import glob # For finding files with wildcards
 import traceback
-
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
+torch.manual_seed(seed)
+if torch.cuda.is_available():
+    torch.cuda.manual_seed_all(seed)
+torch.backends.cudnn.deterministic = True
 # --- Import Model Definitions and UniversalPDEDataset ---
 class UniversalPDEDataset(Dataset):
     def __init__(self, data_list, dataset_type, train_nt_limit=None):
