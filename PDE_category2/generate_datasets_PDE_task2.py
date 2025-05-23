@@ -6,7 +6,10 @@ import time
 import random
 import os
 import argparse
-
+# fix seed
+seed = 42
+random.seed(seed)
+np.random.seed(seed)
 # --- Helper function to generate complex time-varying signals (adapted from your generate_datasets.py) ---
 def generate_complex_signal(t_vals, T, num_components=3, max_freq=5, amp_range=(1, 2.0), noise_std=0.05):
     signal = np.zeros_like(t_vals)
