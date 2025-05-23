@@ -513,7 +513,9 @@ if __name__ == '__main__':
     # POD-DL-ROM Hyperparameters
     N_pod_dim = 64 
     n_latent_dim = 8 
-    LEARNING_RATE = 1e-4; BATCH_SIZE = 32; NUM_EPOCHS = 100
+    LEARNING_RATE = 1e-4
+    BATCH_SIZE = 32
+    NUM_EPOCHS = 150
     CLIP_GRAD_NORM = 1.0; OMEGA_H = 0.5
 
     # --- Dataset Paths and Parameters ---
